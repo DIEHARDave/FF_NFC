@@ -95,6 +95,46 @@ class CcidTest(unittest.TestCase):
         self.assertEqual(ccid.classify_atr(bytes.fromhex("3B9F958131FE9F006576")), (None, None))
 
 
+class FakeAcr122uSlot(object):
+    """An ACR122U with an NTAG216: READ BINARY fails from page 44 on, the
+    PN532 passthrough works everywhere."""
+
+    def __init__(self, memory):
+        self.memory = memory
+
+    def apdu(self, cmd):
+        ok = b"\x90\x00"
+        if cmd[:2] == b"\xff\xca":
+            return b"\x53\xa1\xe8\xbf\x52\x00\x01" + ok
+        if cmd[:2] == b"\xff\xb0":
+            page, length = cmd[3], cmd[4]
+            if page >= 44:
+                return b"\x6a\x82"
+            return self.memory[page * 4:page * 4 + length] + ok
+        if cmd[:8] == b"\xff\x00\x00\x00\x04\xd4\x42\x30":
+            page = cmd[8]
+            return b"\xd5\x43\x00" + self.memory[page * 4:page * 4 + 16] + ok
+        return b"\x6d\x00"
+
+
+class Acr122uTest(unittest.TestCase):
+    def test_ntag216_beyond_page_44(self):
+        from helpers import mime_record, type2_tag
+        from zmodnfc import decoders
+        payload = (b'{"protocol":"openspool","version":"1.0","brand":"SUNLU","type":"PLA",'
+                   b'"color_hex":"0022FF","min_temp":"190","max_temp":"230",'
+                   b'"bed_min_temp":"50","bed_max_temp":"60"}')
+        image = type2_tag(mime_record("application/json", payload), pages=231).memory
+        atr = bytes.fromhex("3B8F8001804F0CA000000306030003000000006A")
+        session = ccid.CcidSession(FakeAcr122uSlot(image), atr)
+        tag = base.read_type2(session, "fake")
+        filament, _ = decoders.decode(tag)
+        self.assertEqual((filament.fmt, filament.brand, filament.material, filament.color),
+                         ("OpenSpool", "SUNLU", "PLA", "0022FF"))
+        # Stops after the NDEF message instead of reading all 231 pages.
+        self.assertLess(len(tag.memory), 300)
+
+
 class FakePort(object):
     def __init__(self, replies):
         self.replies = list(replies)

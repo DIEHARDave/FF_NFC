@@ -351,7 +351,7 @@ class ZmodNfc(object):
         if not scan.has_filament_data() and scan.spool is None:
             self.gcode.respond_info(
                 "NFC: tag %s has no filament data%s. NFC_DUMP shows what was read."
-                % (scan.uid, (" and is " + scan.spoolman_note) if scan.spoolman_note else ""))
+                % (scan.uid, (" (Spoolman: %s)" % scan.spoolman_note) if scan.spoolman_note else ""))
             return
         slots = self._slots()
         if len(slots["slots"]) <= 1:

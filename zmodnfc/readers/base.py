@@ -156,11 +156,33 @@ def read_type2(session, reader_name=""):
                 break
             memory += chunk[:16]
             page += 4
+            # Stop once a complete NDEF message is in; NTAG216 tags are
+            # mostly empty and slow readers take seconds for the rest. The
+            # first 176 bytes (an NTAG213) are always read for the vendor
+            # formats that keep fixed-offset data there.
+            end = _ndef_end(memory)
+            if end is not None and len(memory) >= max(end, 176):
+                break
         del memory[pages * 4:]
     elif first is None:
         return None
     return Tag(session.uid, TECH_ISO14443A, KIND_TYPE2, memory,
                atqa=session.atqa, sak=session.sak, reader=reader_name)
+
+
+def _ndef_end(memory):
+    """Offset just past the NDEF TLV of a Type 2 memory image, or None."""
+    pos = 16
+    while pos + 1 < len(memory) and memory[pos] == 0x00:
+        pos += 1          # NULL TLVs
+    if pos + 1 >= len(memory) or memory[pos] != 0x03:
+        return None
+    length = memory[pos + 1]
+    if length == 0xFF:
+        if pos + 4 > len(memory):
+            return None
+        return pos + 4 + int.from_bytes(memory[pos + 2:pos + 4], "big")
+    return pos + 2 + length
 
 
 def read_mifare_classic(session, keysets, reader_name=""):

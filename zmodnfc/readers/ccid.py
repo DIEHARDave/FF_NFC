@@ -141,6 +141,7 @@ class CcidSession(CardSession):
         self.uid = uid
         self.atqa = b""
         self._key_loaded = None
+        self._type2_method = None
 
     @staticmethod
     def _ok(resp):
@@ -149,10 +150,45 @@ class CcidSession(CardSession):
         return None
 
     def _read_binary(self, block, length):
-        data = self._ok(self.slot.apdu(bytes([0xFF, 0xB0, block >> 8, block & 0xFF, length])))
+        resp = self.slot.apdu(bytes([0xFF, 0xB0, block >> 8, block & 0xFF, length]))
+        data = self._ok(resp)
+        if data is None:
+            LOGGER.debug("zmod_nfc: READ BINARY %d: %s", block, resp.hex() if resp else "no reply")
         return data if data is not None and len(data) >= length else None
 
+    def _read_page4(self, page):
+        """16 bytes as four 4-byte READ BINARYs."""
+        data = bytearray()
+        for offset in range(4):
+            chunk = self._read_binary(page + offset, 4)
+            if chunk is None:
+                return None
+            data += chunk[:4]
+        return bytes(data)
+
+    def _read_passthrough(self, page):
+        """NTAG READ sent through the ACR122U's PN532 (InCommunicateThru)."""
+        resp = self._ok(self.slot.apdu(bytes([0xFF, 0x00, 0x00, 0x00, 0x04, 0xD4, 0x42, 0x30, page])))
+        if resp is None or len(resp) < 19 or resp[:3] != b"\xd5\x43\x00":
+            return None
+        return resp[3:19]
+
     def type2_read(self, page):
+        # The ACR122U refuses READ BINARY beyond an NTAG213's size (page 44
+        # and up on an NTAG215/216), so fall back to smaller reads and then
+        # to a raw READ, and stick with whichever worked.
+        methods = [self._read_binary_16, self._read_page4, self._read_passthrough]
+        if self._type2_method in methods:
+            methods.remove(self._type2_method)
+            methods.insert(0, self._type2_method)
+        for method in methods:
+            data = method(page)
+            if data is not None:
+                self._type2_method = method
+                return data
+        return None
+
+    def _read_binary_16(self, page):
         return self._read_binary(page, 16)
 
     def mifare_auth(self, block, key, key_b=False):
