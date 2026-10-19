@@ -6,9 +6,10 @@ GPL-3.0), which builds on the Bambu Research Group RFID guide, DnG-Crafts
 ACE-RFID and the TigerTag project. Ported to Python 3.8 and to the pure
 Python crypto in crypto.py.
 
-Bambu, Creality and Snapmaker tags need the vendor's key, which is not
-distributed with this plugin; each is enabled by setting its key in the
-[zmod_nfc] config section."""
+Bambu and Creality tags need the vendor's key, which is not distributed
+with this plugin; each is enabled by setting its key in the [zmod_nfc]
+config section. Snapmaker's key derivation salt is published (DnG-Crafts
+U1-RFID "U1 Tag Protocol"), so Snapmaker tags work without configuration."""
 
 import datetime
 import json
@@ -164,10 +165,12 @@ SNAPMAKER_SUBTYPES = {1: "Basic", 2: "Matte", 3: "SnapSpeed", 4: "Silk",
                       5: "Support", 6: "HF", 7: "95A", 8: "95A HF"}
 
 
+# Snapmaker U1 salts: key B uses all 32 bytes, key A the first 25.
+SNAPMAKER_DEFAULT_KEY = b"Snapmaker_qwertyuiop[,.;]_1q2w3e"
+
+
 def snapmaker_keysets(uid, settings):
-    key = settings.get("snapmaker_key")
-    if not key:
-        return []
+    key = settings.get("snapmaker_key") or SNAPMAKER_DEFAULT_KEY
 
     def derive(salt, kind):
         if salt.endswith(b"\x00"):

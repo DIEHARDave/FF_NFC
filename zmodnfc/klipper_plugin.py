@@ -669,9 +669,9 @@ class ZmodNfc(object):
             lines.append("Waiting for a slot for %s" % self.pending.title())
         lines.append("Formats: " + ", ".join(
             name for name in decoders.FORMAT_NAMES if name not in self.disabled_formats))
-        keys = [name for name in ("bambu_key", "creality_key", "snapmaker_key") if name in self.settings]
-        if keys:
-            lines.append("Vendor keys: " + ", ".join(k.split("_")[0].title() for k in keys))
+        keys = [k.split("_")[0].title() for k in ("bambu_key", "creality_key") if k in self.settings]
+        keys.append("Snapmaker" if "snapmaker_key" in self.settings else "Snapmaker (built in)")
+        lines.append("Vendor keys: " + ", ".join(keys))
         gcmd.respond_info("\n".join(lines))
 
     def cmd_NFC_DUMP(self, gcmd):

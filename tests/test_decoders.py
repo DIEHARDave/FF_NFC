@@ -254,8 +254,20 @@ class VendorTest(unittest.TestCase):
         tag = self._mfc(b"\x00" * 48, "default")
         self.assertIsNone(vendors.decode_bambu(tag, [], {}))
 
+    def test_snapmaker_default_key_matches_published_hash(self):
+        self.assertTrue(crypto.key_matches(vendors.SNAPMAKER_DEFAULT_KEY,
+                                           vendors.SNAPMAKER_KEY_SHA256))
+        keyset = decoders.mifare_keysets(b"\xaa\xbb\xcc\xdd", {})[0]
+        # Key A comes from the 25-byte salt A, key B from the full salt B.
+        self.assertEqual(keyset.keys_a[0], crypto.hkdf_sha256(
+            b"\xaa\xbb\xcc\xdd", b"Snapmaker_qwertyuiop[,.;]", b"key_a_0", 6))
+        self.assertEqual(keyset.keys_b[15], crypto.hkdf_sha256(
+            b"\xaa\xbb\xcc\xdd", b"Snapmaker_qwertyuiop[,.;]_1q2w3e", b"key_b_15", 6))
+
     def test_keysets(self):
-        self.assertEqual(decoders.mifare_keysets(b"\x01\x02\x03\x04", {}), [])
+        # Snapmaker's published key is built in; the others need config.
+        self.assertEqual([k.name for k in decoders.mifare_keysets(b"\x01\x02\x03\x04", {})],
+                         ["Snapmaker"])
         keysets = decoders.mifare_keysets(b"\x01\x02\x03\x04", {
             "bambu_key": b"\x11" * 16, "creality_key": b"\x22" * 16,
             "snapmaker_key": b"\x33" * 32, "extra_mifare_keys": [b"\x44" * 6]})

@@ -48,7 +48,7 @@ MIPS CPU is impractical.
 | [TigerTag](https://tigertag.io) | NTAG21x | all | Offline ID database. |
 | Bambu Lab | MIFARE Classic 1K | ACR1552U, PN532, PN5180 | Needs `bambu_key`. |
 | Creality (CFS) | MIFARE Classic 1K | ACR1552U, PN532, PN5180 | Needs `creality_key`; encrypted tags also need `creality_encryption_key`. |
-| Snapmaker | MIFARE Classic 1K | ACR1552U, PN532, PN5180 | Needs `snapmaker_key`. The tag's RSA signature is not checked. |
+| Snapmaker (U1) | MIFARE Classic 1K | ACR1552U, PN532, PN5180 | Works out of the box: the key derivation is [published](https://github.com/DnG-Crafts/U1-RFID/blob/main/docs/U1%20Tag%20Protocol.md). The tag's RSA signature is not checked, so re-written tags read too. |
 | Anycubic (ACE) | NTAG21x | all | |
 | Elegoo | NTAG21x | all | |
 | Qidi | MIFARE Classic 1K | ACR1552U, PN532, PN5180 | |
@@ -58,7 +58,7 @@ MIPS CPU is impractical.
 | NDEF on MIFARE Classic, Type 4 (DESFire) | | ACR1552U, PN532 | All of the NDEF formats above. |
 | Any other tag | | all | Its UID is still matched against Spoolman spools. |
 
-**Vendor keys** (Bambu, Creality, Snapmaker) are not distributed with this
+**Vendor keys** (Bambu, Creality) are not distributed with this
 plugin. If you have them, add them to your config. Each key is checked
 against its known SHA-256 at startup, so a typo shows up as a config error
 instead of tags that silently fail to read.
