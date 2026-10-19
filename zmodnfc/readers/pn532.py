@@ -59,17 +59,20 @@ class Pn532(object):
         self._rx = bytearray()
 
     def wake(self):
-        self.port.write(_WAKEUP)
-        time.sleep(0.01)
-        self.port.flush_input()
+        """Wake the PN532 into normal mode (no SAM). After power-up it is in
+        LowVbat mode and accepts only SAMConfiguration, sent right behind
+        the 0x55 wakeup run (as libnfc does); other commands go unanswered."""
+        self.command(CMD_SAM_CONFIGURATION, b"\x01\x14\x01", timeout=0.5, wake=True)
 
-    def command(self, cmd, params=b"", timeout=1.0):
+    def command(self, cmd, params=b"", timeout=1.0, wake=False):
         """Send a command and return the response data after the response
-        code, or raise Pn532Error."""
+        code, or raise Pn532Error. wake sends the wakeup run in front."""
         body = bytes([0xD4, cmd]) + bytes(params)
         length = len(body)
         frame = (_PREAMBLE + bytes([length, (-length) & 0xFF]) + body
                  + bytes([(-sum(body)) & 0xFF, 0x00]))
+        if wake:
+            frame = _WAKEUP + frame
         self.port.flush_input()
         del self._rx[:]
         try:
@@ -175,8 +178,6 @@ class Pn532Reader(Reader):
             if len(fw) < 4 or fw[0] != 0x32:
                 raise Pn532Error("%s: not a PN532 (IC 0x%02X)" % (self.path, fw[0] if fw else 0))
             self.firmware = "%d.%d" % (fw[1], fw[2])
-            # Normal mode, no SAM.
-            self.chip.command(CMD_SAM_CONFIGURATION, b"\x01\x14\x01")
             # Few passive activation retries, so a poll without a card
             # returns in tens of milliseconds instead of blocking.
             self.chip.command(CMD_RF_CONFIGURATION, b"\x05\xff\x01\x02")

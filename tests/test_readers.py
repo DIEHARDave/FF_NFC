@@ -310,7 +310,7 @@ class FakePort(object):
 
     def write(self, data, timeout=1.0):
         self.written.append(bytes(data))
-        if self.replies and not data.startswith(b"\x55"):
+        if self.replies:
             self.buffer += self.replies.pop(0)
 
     def read(self, size, timeout):
@@ -340,6 +340,15 @@ class Pn532Test(unittest.TestCase):
         port = FakePort([b"\x00\xff\x12" + pn532._ACK + b"\x00" + pn532_frame(b"\x4b\x00")])
         self.assertEqual(pn532.Pn532(port).command(pn532.CMD_IN_LIST_PASSIVE_TARGET, b"\x01\x00"),
                          b"\x00")
+
+    def test_wake_sends_sam_configuration_with_wakeup(self):
+        # A PN532 fresh from power-up only answers SAMConfiguration, and only
+        # when it arrives in the same transmission as the 0x55 run.
+        port = FakePort([pn532._ACK + pn532_frame(b"\x15")])
+        pn532.Pn532(port).wake()
+        frame = port.written[-1]
+        self.assertTrue(frame.startswith(pn532._WAKEUP))
+        self.assertEqual(frame[len(pn532._WAKEUP) + 5:len(pn532._WAKEUP) + 7], b"\xd4\x14")
 
     def test_no_ack(self):
         port = FakePort([b""])
