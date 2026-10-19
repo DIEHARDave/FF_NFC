@@ -190,6 +190,7 @@ class Acr122uMifareTest(unittest.TestCase):
         memory[80:83] = b"\x12\x34\x56"
         memory[128:130] = (175).to_bytes(2, "little")
         memory[130:132] = (500).to_bytes(2, "little")
+        memory[160:168] = b"20260312"
         slot = FakeAcr122uMifare(uid, bytes(memory), {s: keyset.keys_a[s] for s in range(16)})
         atr = bytes.fromhex("3B8F8001804F0CA000000306030001000000006A")
         session = ccid.CcidSession(slot, atr)
@@ -199,6 +200,7 @@ class Acr122uMifareTest(unittest.TestCase):
         self.assertEqual((filament.fmt, filament.material, filament.modifiers, filament.color,
                           filament.weight, filament.diameter),
                          ("Snapmaker", "PLA", ["Silk"], "123456", 500, 1.75))
+        self.assertEqual(filament.manufactured, "2026-03-12")
 
 
 class FakePort(object):

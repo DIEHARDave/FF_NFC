@@ -206,7 +206,15 @@ def decode_snapmaker(tag, records, settings):
         nozzle_max=le(148, 2) or None, nozzle_min=le(150, 2) or None,
         bed_temp=le(154, 2) or None,
         external_id="snapmaker:%d" % le(96, 4),
+        manufactured=_snapmaker_date(_ascii(d[160:168])),
     )
+
+
+def _snapmaker_date(text):
+    """ISO date from the tag's "YYYYMMDD", or None."""
+    if len(text) == 8 and text.isdigit() and text != "19700101":
+        return "%s-%s-%s" % (text[:4], text[4:6], text[6:])
+    return None
 
 
 # --- Qidi ------------------------------------------------------------------

@@ -195,6 +195,10 @@ with Python 3.8, which is what Klipper runs under on the AD5X.
   TigerTag ID database. OpenRFID builds on the
   [Bambu Research Group RFID guide](https://github.com/Bambu-Research-Group/RFID-Tag-Guide)
   and [DnG-Crafts ACE-RFID](https://github.com/DnG-Crafts/ACE-RFID).
+* Snapmaker U1 tag research by
+  [DnG-Crafts](https://github.com/DnG-Crafts/U1-RFID),
+  [SnapmakerResearchGroup](https://github.com/SnapmakerResearchGroup/RFID) and the
+  [Proxmark3](https://github.com/RfidResearchGroup/proxmark3) key generator.
 * [OpenPrintTag](https://github.com/prusa3d/OpenPrintTag) by Prusa Research.
   The test vectors in `tests/vectors/openprinttag` are MIT licensed; see the
   LICENSE file there.
