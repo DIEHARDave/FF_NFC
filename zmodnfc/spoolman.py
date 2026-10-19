@@ -60,12 +60,14 @@ def spool_uids(spool):
 def spool_title(spool):
     filament = spool.get("filament") or {}
     vendor = (filament.get("vendor") or {}).get("name")
-    parts = [vendor, filament.get("material"), filament.get("name")]
-    seen = []
-    for part in parts:
-        if part and str(part).lower() not in " ".join(seen).lower():
-            seen.append(str(part))
-    return " ".join(seen) or "spool %s" % spool.get("id")
+    # Filament names often repeat the vendor or material ("PLA SnapSpeed"),
+    # so words already in the title are dropped.
+    words = []
+    for part in (vendor, filament.get("material"), filament.get("name")):
+        for word in str(part or "").split():
+            if word.lower() not in (w.lower() for w in words):
+                words.append(word)
+    return " ".join(words) or "spool %s" % spool.get("id")
 
 
 def spool_color(spool):

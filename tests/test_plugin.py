@@ -326,6 +326,12 @@ class PluginTest(unittest.TestCase):
         gcode.commands["RUN_ZCOLOR"](FakeGcmd(gcode, SLOT=3, HEX="FFFFFF", TYPE="PLA"))
         self.assertEqual(len(popups), 2)
 
+    def test_spool_title_drops_repeated_words(self):
+        from zmodnfc.spoolman import spool_title
+        spool = {"id": 15, "filament": {"vendor": {"name": "Snapmaker"}, "material": "PLA",
+                                        "name": "PLA SnapSpeed"}}
+        self.assertEqual(spool_title(spool), "Snapmaker PLA SnapSpeed")
+
     def test_bad_vendor_key(self):
         with self.assertRaises(ConfigError):
             make_plugin({"bambu_key": "00" * 16})

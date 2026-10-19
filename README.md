@@ -101,6 +101,15 @@ Klipper merges both `[zmod_nfc]` sections, and yours wins.
 
 ## Using it
 
+A Snapmaker spool scanned for the first time, shown on HelixScreen. It is not
+in Spoolman yet, so the prompt offers **Add to Spoolman**:
+
+![NFC prompt for a Snapmaker PLA SnapSpeed tag, with slot buttons and an Add to Spoolman button](docs/images/prompt-new-spool.png)
+
+The same spool after adding it, now matched to Spoolman spool 15:
+
+![NFC prompt for the same tag showing Spoolman spool 15 and the slot buttons](docs/images/prompt-spoolman-spool.png)
+
 1. Hold a tag to the reader. A prompt appears in Mainsail, Fluidd and
    HelixScreen, showing the filament and one button per IFS slot (or `T0`-`T3`
    on the Creator 5). Empty slots are highlighted.
