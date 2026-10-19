@@ -54,7 +54,7 @@ MIPS CPU is impractical.
 | Qidi | MIFARE Classic 1K | ACR1552U, PN532, PN5180 | |
 | [SpoolEase](https://spoolease.io) | NTAG21x | all | URL record. |
 | Spoolman references | any NDEF tag | all | `web+spoolman:s-<id>` / `.../spool/show/<id>` links, and [nfc2klipper](https://github.com/bofh69/nfc2klipper) `SPOOL:<id>` text. |
-| Plain text | any NDEF tag | all | `PLA:FF0000`, `PETG #00FF00`, `PLA Silk;123456;Brand`, and the [qr-filament-5x](https://github.com/ninjamida/qr-filament-5x) `QRF:PLA:FF0000` strings. |
+| Plain text | any NDEF tag | all | `PLA:FF0000`, `PETG #00FF00`, `PLA Silk;123456;Brand`. |
 | NDEF on MIFARE Classic, Type 4 (DESFire) | | ACR1552U, PN532 | All of the NDEF formats above. |
 | Any other tag | | all | Its UID is still matched against Spoolman spools. |
 
@@ -189,10 +189,9 @@ with Python 3.8, which is what Klipper runs under on the AD5X.
 * [OpenPrintTag](https://github.com/prusa3d/OpenPrintTag) by Prusa Research.
   The test vectors in `tests/vectors/openprinttag` are MIT licensed; see the
   LICENSE file there.
-* [nfc2klipper](https://github.com/bofh69/nfc2klipper),
-  [klipper-nfc-daemon](https://github.com/DIEHARDave/klipper-nfc-daemon) and
-  [qr-filament-5x](https://github.com/ninjamida/qr-filament-5x) for the
-  Spoolman conventions and the scan-then-pick-a-slot flow.
+* [nfc2klipper](https://github.com/bofh69/nfc2klipper) and
+  [klipper-nfc-daemon](https://github.com/DIEHARDave/klipper-nfc-daemon) for
+  the Spoolman conventions and the scan-then-pick-a-slot flow.
 
 ## License
 

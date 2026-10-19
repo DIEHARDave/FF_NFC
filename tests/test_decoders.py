@@ -151,7 +151,7 @@ class OpenFormatTest(unittest.TestCase):
         self.assertEqual((filament.fmt, filament.spool_id), ("OpenSpool", 3))
 
     def test_text(self):
-        for text, expected in (("QRF:PLA:FF0000", ("PLA", "FF0000")),
+        for text, expected in (("PLA:FF0000", ("PLA", "FF0000")),
                                ("PETG #00ff00", ("PETG", "00FF00")),
                                ("PLA Silk;123456;Sunlu", ("PLA", "123456"))):
             filament, _ = decoders.decode(type2_tag(text_record(text)))

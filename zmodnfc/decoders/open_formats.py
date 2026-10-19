@@ -318,17 +318,15 @@ def decode_spoolman(tag, records, settings):
 
 # --- Plain text ------------------------------------------------------------
 
-# "QRF:PLA:FF0000" (qr-filament-5x labels), "PLA:FF0000", "PETG #00FF00",
-# "PLA;FF0000;Brand".
+# "PLA:FF0000", "PETG #00FF00", "PLA;FF0000;Brand".
 _TEXT_FORMAT = re.compile(
-    r"^(?:QRF:)?\s*([A-Za-z][A-Za-z0-9+\- ]{1,15}?)\s*[:;,# ]\s*#?([0-9A-Fa-f]{6})\b"
+    r"^\s*([A-Za-z][A-Za-z0-9+\- ]{1,15}?)\s*[:;,# ]\s*#?([0-9A-Fa-f]{6})\b"
     r"(?:\s*[:;,]\s*(.+))?$")
 
 
 def decode_text(tag, records, settings):
-    """Simple text tags: a material and a colour, as qr-filament-5x labels
-    and quick DIY tags carry them; also a JSON object with material/type and
-    color/color_hex keys."""
+    """Simple text tags: a material and a colour, as quick DIY tags carry
+    them; also a JSON object with material/type and color/color_hex keys."""
     for record in records:
         if not (record.is_text() or record.mime in ("text/plain", "application/json")):
             continue
