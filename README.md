@@ -183,7 +183,7 @@ while printing unless `scan_while_printing: True`.
 
 | Printer | Camera | Time per frame |
 |---------|--------|----------------|
-| AD5X | 2048x1536, above and in front of the bed | about 2 s |
+| AD5X | 2048x1536, above and in front of the bed **3rd Party Cam**| about 2 s |
 | Creator 5 | 1280x720, low, looking across the bed | about 2.3 s |
 
 The code's modules (its small squares) need about 2 to 3 camera pixels each,
@@ -195,7 +195,7 @@ sees it squashed to a third of its height, but it then needs to be larger.
 > to an IFS slot) and on a Creator 5 (assigned to a toolhead), both through
 > zmod_afclite; each read the label within about 5 seconds. The QR reader
 > also has tests against reference codes and camera-like images. Reports
-> from other setups are welcome.
+> from other setups and camera models are welcome.
 
 How it works: the plugin starts a low-priority child process that fetches
 snapshots from Zmod's camera streamer (`http://127.0.0.1:8080/?action=snapshot`
