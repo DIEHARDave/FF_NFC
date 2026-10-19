@@ -8,9 +8,17 @@ writes the choice into Zmod - through zmod_afclite's SET_SPOOL_ID when that
 plugin is loaded and the spool is in Spoolman, otherwise with Zmod's own
 CHANGE_ZCOLOR. Inserting the filament into a free slot while the prompt is
 open picks that slot, which also works with screens that cannot show
-prompts."""
+prompts.
 
+NFC_QR_SCAN reads a QR label (Spoolman, OpenSpool JSON, text) through the
+printer camera instead. The camera module does that in a child process;
+its text then takes the same path as a tag's."""
+
+import json
 import logging
+import os
+import subprocess
+import sys
 import threading
 import time
 
@@ -20,10 +28,15 @@ from .decoders import vendors
 from .readers.base import ReaderError
 from .readers.detect import READER_TYPES, open_reader
 from .spoolman import Spoolman, SpoolmanError, normalize_uid, spool_color, spool_title, spool_uids
+from .camera import DEFAULT_URL, DEFAULT_WIDTH
 from .decoders.ndef import text_message, type2_image
-from .tag import KIND_TYPE2, TECH_ISO14443A, Tag, normalize_color
+from .tag import KIND_QR, KIND_TYPE2, TECH_CAMERA, TECH_ISO14443A, Tag, normalize_color
 
 LOGGER = logging.getLogger("zmod_nfc")
+# The directory holding the zmodnfc package, for the camera child process.
+PLUGIN_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+# The last camera scan's frames, to see why a label was not read.
+QR_FRAMES_DIR = "/tmp/zmod_nfc_qr"
 
 SPOOLMAN_REMOTE_METHOD = "spoolman_set_active_spool"
 SLOTS_PER_IFS = 4
@@ -86,12 +99,20 @@ class Scan(object):
     def uid(self):
         return self.tag.uid_hex
 
+    @property
+    def is_qr(self):
+        return self.tag.kind == KIND_QR
+
+    def source(self):
+        """What was scanned, for messages: "tag 04A1..." or "QR code"."""
+        return "QR code" if self.is_qr else "tag " + self.uid
+
     def title(self):
         if self.spool is not None:
             return spool_title(self.spool)
         if self.filament is not None:
             return self.filament.title()
-        return "Tag " + self.uid
+        return self.source()[0].upper() + self.source()[1:]
 
     def material(self):
         if self.spool is not None:
@@ -145,6 +166,10 @@ class ZmodNfc(object):
         self.skip_window = config.getfloat("skip_zmod_color_window", 300., minval=0.)
         self.disabled_formats = [f.strip() for f in config.get("disabled_formats", "").split(",")
                                  if f.strip()]
+        self.qr_url = config.get("qr_snapshot_url", DEFAULT_URL)
+        self.qr_ffmpeg = config.get("qr_ffmpeg", "")
+        self.qr_scan_time = config.getfloat("qr_scan_time", 20., minval=1., maxval=120.)
+        self.qr_width = config.getint("qr_width", DEFAULT_WIDTH, minval=320, maxval=4096)
         self.spoolman = Spoolman(config.get("moonraker_url", "http://127.0.0.1:7125"))
         self.settings = self._vendor_settings(config)
         self.excluded_ports = []
@@ -170,6 +195,8 @@ class ZmodNfc(object):
         self._rescan = threading.Event()
         self._assigned = {}          # slot -> reactor time of the NFC assignment
         self._zmod_run_zcolor = None
+        self._qr_process = None      # camera child process while scanning
+        self._qr_prompt = False      # the "hold the label up" prompt is shown
 
         for cmd, desc in (
                 ("NFC_STATUS", "Show the NFC reader state and the last scanned tag"),
@@ -181,6 +208,8 @@ class ZmodNfc(object):
                 ("NFC_RESCAN", "Read the tag on the reader again"),
                 ("NFC_TEST_SCAN", "Simulate a scan without a reader: TEXT=PLA:FF0000, "
                                   "SPOOL=<id> or UID=<hex>"),
+                ("NFC_QR_SCAN", "Read a spool's QR label with the printer camera [TIME=<s>]"),
+                ("NFC_QR_CANCEL", "Stop looking for a QR label"),
                 ("NFC_ENABLE", "Resume handling scanned tags"),
                 ("NFC_DISABLE", "Ignore scanned tags until NFC_ENABLE")):
             self.gcode.register_command(cmd, getattr(self, "cmd_" + cmd), desc=desc)
@@ -263,6 +292,7 @@ class ZmodNfc(object):
         # thread must release the reader first.
         self._stop.set()
         self._rescan.set()
+        self._kill_qr()
         if self._thread is not None:
             self._thread.join(3.)
             self._thread = None
@@ -350,7 +380,8 @@ class ZmodNfc(object):
                     scan.spool = self.spoolman.get_spool(spool_id)
                 except SpoolmanError as exc:
                     LOGGER.info("zmod_nfc: tag spool ID %s: %s", spool_id, exc)
-            if scan.spool is None:
+            # QR codes have no UID to look up.
+            if scan.spool is None and tag.uid:
                 scan.spool = self.spoolman.find_spool_by_uid(tag.uid_hex)
             if scan.spool is None and self.auto_create and filament is not None \
                     and filament.material:
@@ -395,8 +426,8 @@ class ZmodNfc(object):
             return
         if not scan.has_filament_data() and scan.spool is None:
             self.gcode.respond_info(
-                "NFC: tag %s has no filament data%s. NFC_DUMP shows what was read."
-                % (scan.uid, (" (Spoolman: %s)" % scan.spoolman_note) if scan.spoolman_note else ""))
+                "NFC: %s has no filament data%s. NFC_DUMP shows what was read."
+                % (scan.source(), (" (Spoolman: %s)" % scan.spoolman_note) if scan.spoolman_note else ""))
             return
         slots = self._slots()
         if len(slots["slots"]) <= 1:
@@ -470,7 +501,8 @@ class ZmodNfc(object):
         elif scan.spoolman_note:
             details.append(scan.spoolman_note)
         if scan.filament is not None:
-            details.append(scan.filament.fmt + " tag")
+            details.append(scan.filament.fmt + (" QR code" if scan.is_qr else " tag"))
+        self._qr_prompt = False      # this prompt replaces the camera one
         self._prompt("prompt_text %s" % clean(" - ".join(details)))
         hint = "Choose the %s" % ("toolhead" if slots["toolchanger"] else "IFS slot")
         if self.assign_on_insert and slots["presence"]:
@@ -557,7 +589,7 @@ class ZmodNfc(object):
             # and material into Zmod and keeps Moonraker's active spool on
             # the loaded lane.
             cmd = "SET_SPOOL_ID LANE=E%d SPOOL_ID=%d" % (slot_number - 1, spool["id"])
-            if self.bind_card_uid and scan.uid not in spool_uids(spool):
+            if self.bind_card_uid and scan.uid and scan.uid not in spool_uids(spool):
                 cmd += " CARD_UID=%s" % scan.uid
             run_gcode(cmd)
             respond("NFC: %s is now Spoolman spool %d (%s)" % (label, spool["id"], scan.title()))
@@ -584,7 +616,7 @@ class ZmodNfc(object):
                                 % (SPOOL_VARIABLE % slot_number, spool["id"]))
             if slots["current"] in (0, slot_number) or len(slots["slots"]) == 1:
                 self._set_active_spool(spool["id"])
-            if self.bind_card_uid and scan.uid not in spool_uids(spool):
+            if self.bind_card_uid and scan.uid and scan.uid not in spool_uids(spool):
                 self._in_background(self.spoolman.bind_uid, spool, scan.uid)
             respond("NFC: %s is now %s (Spoolman spool %d)" % (label, scan.title(), spool["id"]))
         else:
@@ -669,7 +701,9 @@ class ZmodNfc(object):
             lines.append("  %s" % self.reader_error)
         if self.last is not None:
             age = time.time() - self.last.time
-            lines.append("Last tag %s, %ds ago: %s" % (self.last.uid, age, self.last.title()))
+            lines.append("Last scan (%s), %ds ago: %s" % (self.last.source(), age, self.last.title()))
+        if self._qr_process is not None:
+            lines.append("Looking for a QR label with the camera")
         if self.pending is not None:
             lines.append("Waiting for a slot for %s" % self.pending.title())
         lines.append("Formats: " + ", ".join(
@@ -687,7 +721,9 @@ class ZmodNfc(object):
         if scan.tag.sector_keys:
             lines.append("Sectors opened: " + ", ".join(
                 "%d=%s" % item for item in sorted(scan.tag.sector_keys.items())))
-        for record in scan.records:
+        if scan.is_qr:
+            lines.append("QR text: %s" % scan.tag.memory.decode("utf-8", "replace")[:300])
+        for record in [] if scan.is_qr else scan.records:
             if record.is_uri():
                 lines.append("NDEF URI: %s" % record.uri())
             elif record.is_text() or record.mime in ("application/json", "text/plain"):
@@ -728,6 +764,109 @@ class ZmodNfc(object):
         scan = self._wait_background(self._process, tag)
         self._handle_scan(scan, self.gcode.run_script_from_command)
 
+    # Camera QR labels ----------------------------------------------------
+
+    def cmd_NFC_QR_SCAN(self, gcmd):
+        if self._qr_process is not None:
+            raise gcmd.error("NFC: already looking for a QR label")
+        if self._printing() and not self.scan_while_printing:
+            raise gcmd.error("NFC: QR scanning is off while printing (scan_while_printing)")
+        seconds = gcmd.get_float("TIME", self.qr_scan_time, minval=1., maxval=120.)
+        command = [sys.executable, "-m", "zmodnfc.camera", "--url", self.qr_url,
+                   "--time", "%g" % seconds, "--width", str(self.qr_width), "--nice", "19",
+                   "--verbose", "--save-dir", QR_FRAMES_DIR]
+        if self.qr_ffmpeg:
+            command += ["--ffmpeg", self.qr_ffmpeg]
+        env = dict(os.environ)
+        env["PYTHONPATH"] = os.pathsep.join(p for p in (PLUGIN_DIR, env.get("PYTHONPATH")) if p)
+        try:
+            process = subprocess.Popen(command, cwd=PLUGIN_DIR, env=env,
+                                       stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                                       stderr=subprocess.PIPE)
+        except OSError as exc:
+            raise gcmd.error("NFC: could not start the camera scan: %s" % exc)
+        self._qr_process = process
+        self._prompt("prompt_begin NFC: QR label")
+        self._prompt("prompt_text Hold the spool's QR label up to the camera (%d s)" % seconds)
+        self._prompt("prompt_footer_button Cancel|NFC_QR_CANCEL|error")
+        self._prompt("prompt_show")
+        self._qr_prompt = True
+        gcmd.respond_info("NFC: looking for a QR label for %d s" % seconds)
+        thread = threading.Thread(target=self._qr_wait, args=(process, seconds),
+                                  name="zmod_nfc camera")
+        thread.daemon = True
+        thread.start()
+
+    def _qr_wait(self, process, seconds):
+        """Wait for the camera process, then decode and look up its text
+        like a tag (worker thread)."""
+        try:
+            out, err = process.communicate(timeout=seconds + 60.)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            out, err = process.communicate()
+        result = {}
+        for line in reversed(out.decode("utf-8", "replace").splitlines()):
+            try:
+                result = json.loads(line)
+                break
+            except ValueError:
+                continue
+        for line in err.decode("utf-8", "replace").splitlines():
+            if line.startswith("frame "):
+                LOGGER.info("zmod_nfc: camera %s", line)
+        if not result:
+            message = err.decode("utf-8", "replace").strip().splitlines()
+            LOGGER.warning("zmod_nfc: camera scan failed: %s", err.decode("utf-8", "replace"))
+            result = {"error": "camera scan failed%s" % (": " + message[-1] if message else "")}
+        scan = None
+        if "text" in result:
+            tag = Tag(b"", TECH_CAMERA, KIND_QR, result["text"].encode("utf-8"), reader="camera")
+            scan = self._process(tag)
+        self._post(self._qr_done, process, scan, result.get("error"))
+
+    def _qr_done(self, process, scan, error):
+        if process is not self._qr_process:
+            return                   # cancelled
+        self._qr_process = None
+        if self._qr_prompt:
+            self._prompt("prompt_end")
+            self._qr_prompt = False
+        if scan is not None:
+            self._handle_scan(scan)
+            return
+        self.gcode.respond_info("NFC: %s" % error)
+        # Say so on the screen too, where the scan was started.
+        self._prompt("prompt_begin NFC: QR label")
+        self._prompt("prompt_text %s" % (error[:1].upper() + error[1:]).replace("|", "/"))
+        self._prompt("prompt_text Hold the label still, close to the camera and well lit")
+        self._prompt("prompt_footer_button Try again|NFC_QR_SCAN|primary")
+        self._prompt("prompt_footer_button Close|NFC_QR_CANCEL|secondary")
+        self._prompt("prompt_show")
+        self._qr_prompt = True
+
+    def _kill_qr(self):
+        process, self._qr_process = self._qr_process, None
+        if process is not None:
+            try:
+                process.kill()
+            except OSError:
+                pass
+
+    def cmd_NFC_QR_CANCEL(self, gcmd):
+        if self._qr_process is None:
+            if self._qr_prompt:          # the "nothing found" prompt
+                self._prompt("prompt_end")
+                self._qr_prompt = False
+            else:
+                gcmd.respond_info("NFC: not looking for a QR label")
+            return
+        self._kill_qr()
+        if self._qr_prompt:
+            self._prompt("prompt_end")
+            self._qr_prompt = False
+        gcmd.respond_info("NFC: stopped looking for a QR label")
+
     def cmd_NFC_ENABLE(self, gcmd):
         self.enabled = True
         gcmd.respond_info("NFC: scanning enabled")
@@ -744,6 +883,7 @@ class ZmodNfc(object):
             "state": self.reader_state,
             "error": self.reader_error,
             "pending": self.pending is not None,
+            "qr_scanning": self._qr_process is not None,
             "last": self.last.summary() if self.last is not None else None,
         }
 

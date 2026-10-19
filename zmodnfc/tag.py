@@ -3,6 +3,7 @@
 # Tag technologies, as far as the reader can tell.
 TECH_ISO14443A = "iso14443a"
 TECH_ISO15693 = "iso15693"
+TECH_CAMERA = "camera"                  # a QR code, read through the camera
 
 # Tag memory layouts the decoders understand.
 KIND_TYPE2 = "type2"                    # MIFARE Ultralight / NTAG21x
@@ -10,6 +11,7 @@ KIND_MIFARE_CLASSIC = "mifare_classic"  # MIFARE Classic 1K / 4K / Mini
 KIND_TYPE4 = "type4"                    # ISO-DEP (DESFire, ...) with NDEF
 KIND_TYPE5 = "type5"                    # ISO 15693 / NFC-V (ICODE SLIX2, ...)
 KIND_UNKNOWN = "unknown"
+KIND_QR = "qr"                          # QR code; memory holds its text (UTF-8)
 
 MIFARE_BLOCK = 16
 
@@ -39,6 +41,7 @@ class Tag(object):
                       sectors_read, and sector trailers (keys and access
                       bits, no data) are not read and stay zero
       type4           empty; the NDEF file is in ndef
+      qr              the QR code's text as UTF-8; there is no UID
     """
 
     def __init__(self, uid, tech, kind, memory=b"", atqa=b"", sak=None,
@@ -66,6 +69,8 @@ class Tag(object):
         return self.uid.hex().upper()
 
     def describe(self):
+        if self.kind == KIND_QR:
+            return "QR code, %d bytes" % len(self.memory)
         parts = [self.kind, self.tech, "UID " + self.uid_hex]
         if self.sak is not None:
             parts.append("SAK %02X" % self.sak)

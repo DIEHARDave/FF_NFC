@@ -8,6 +8,9 @@ which IFS slot or toolhead the spool goes in. You pick one, or simply insert
 the filament into an empty slot, and the slot gets the spool's material and
 color. If Spoolman is set up, the slot also gets the Spoolman spool.
 
+No reader? Spoolman's printed QR labels can be read with the printer's own
+camera instead (see [Camera QR labels](#camera-qr-labels)).
+
 ```
 scan tag ──► decode (Bambu, Creality, OpenSpool, OpenPrintTag, ...)
          ──► look up in Spoolman (by spool ID on the tag or by tag UID)
@@ -160,6 +163,42 @@ Spoolman details:
 
 Without Spoolman, only the tag's material and color are used.
 
+### Camera QR labels
+
+Spools with a QR label can be scanned with the printer camera instead of an
+NFC reader. Run `NFC_QR_SCAN`, or tap the **SCAN_QR_LABEL** macro in
+Mainsail, Fluidd or HelixScreen, then hold the label up to the camera or lay
+it on the bed. The usual slot prompt follows as soon as the code is read.
+
+It reads:
+
+* **Spoolman labels**: `web+spoolman:s-<id>` (Spoolman's default QR code)
+  and links to `.../spool/show/<id>`. The spool is selected in Spoolman.
+* **OpenSpool JSON** and the plain-text formats above (`PLA:FF0000`, ...).
+
+The scan looks for up to 20 seconds (`qr_scan_time`, or
+`NFC_QR_SCAN TIME=<s>`), at about one camera frame every 1.5 seconds on the
+AD5X. Codes up to version 10 (271 bytes) are read. The code's modules (its
+small squares) need about 3 camera pixels each at the camera's full 2048
+pixel width, so print labels large enough and bring them close. Scanning is
+off while printing unless `scan_while_printing: True`.
+
+> **Status: new.** Tested on an AD5X with a printed Spoolman label: read in
+> about 5 seconds, then assigned to an IFS slot through zmod_afclite. The QR
+> reader also has tests against reference codes and camera-like images.
+> Reports from other setups are welcome.
+
+How it works: the plugin starts a low-priority child process that fetches
+snapshots from Zmod's camera streamer, has the firmware's ffmpeg turn each
+into a scaled-down grayscale frame, and decodes it with a QR reader written
+in pure Python (`zmodnfc/qr.py`). Klipper itself does none of the image
+work. The camera, ffmpeg and frame size are configurable; see the `qr_`
+options in [`zmod_nfc.cfg`](zmod_nfc.cfg). To try a saved snapshot:
+
+```sh
+python3 -m zmodnfc.camera --image label.jpg   # from the plugin directory
+```
+
 ## Commands
 
 | Command | |
@@ -172,10 +211,13 @@ Without Spoolman, only the tag's material and color are used.
 | `NFC_DUMP [RAW=1]` | Everything read from the last tag; `RAW=1` adds a memory dump. |
 | `NFC_RESCAN` | Read the tag on the reader again. |
 | `NFC_TEST_SCAN TEXT=PLA:FF0000` / `SPOOL=<id>` / `UID=<hex>` | Simulate a scan, to try the prompt and Spoolman flow without a reader. |
+| `NFC_QR_SCAN [TIME=<s>]` | Read a QR label with the printer camera (the `SCAN_QR_LABEL` macro runs this). |
+| `NFC_QR_CANCEL` | Stop looking for a QR label. |
 | `NFC_ENABLE` / `NFC_DISABLE` | Resume or ignore scans. |
 
-`printer.zmod_nfc` reports `state`, `reader`, `pending` and the `last` tag
-(UID, format, material, color, spool ID) for macros and other clients.
+`printer.zmod_nfc` reports `state`, `reader`, `pending`, `qr_scanning` and
+the `last` tag (UID, format, material, color, spool ID) for macros and other
+clients.
 
 ## Testing a reader without Klipper
 
@@ -199,7 +241,7 @@ what the spool is. Remove anything private first.
 
 ```sh
 cd tests
-python3 -m unittest test_decoders test_readers test_plugin
+python3 -m unittest test_decoders test_readers test_plugin test_qr
 ```
 
 The reader tests need Linux (`fcntl`, `termios`). Keep the code compatible

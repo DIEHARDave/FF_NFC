@@ -1,8 +1,10 @@
 """NFC Forum NDEF: finding the NDEF message in a tag's memory and splitting
 it into records."""
 
+import re
+
 from ..tag import (
-    KIND_MIFARE_CLASSIC, KIND_TYPE2, KIND_TYPE4, KIND_TYPE5, MIFARE_BLOCK,
+    KIND_MIFARE_CLASSIC, KIND_QR, KIND_TYPE2, KIND_TYPE4, KIND_TYPE5, MIFARE_BLOCK,
     mifare_sector_layout,
 )
 
@@ -207,6 +209,25 @@ def type2_image(message, uid, pages=135):
     return bytes(memory)
 
 
+# URIs as QR codes carry them: "scheme://..." or a web+ scheme (Spoolman's
+# "web+spoolman:s-12"). "PLA:FF0000" is text, not a URI.
+_URI = re.compile(r"^(?:[A-Za-z][A-Za-z0-9+.-]*://|web\+[a-z]+:)\S+$", re.I)
+
+
+def text_records(text):
+    """Records for text that did not come from NDEF (a QR code), so the
+    decoders can treat it like a tag: a URI record for a URI, a JSON record
+    for a JSON object, otherwise a text record."""
+    text = text.strip()
+    if _URI.match(text):
+        return [NdefRecord(TNF_WELL_KNOWN, b"U", b"", b"\x00" + text.encode("utf-8"))]
+    if text.startswith("{"):
+        return [NdefRecord(TNF_MIME, b"application/json", b"", text.encode("utf-8"))]
+    return [NdefRecord(TNF_WELL_KNOWN, b"T", b"", b"\x02en" + text.encode("utf-8"))]
+
+
 def tag_records(tag):
+    if tag.kind == KIND_QR:
+        return text_records(tag.memory.decode("utf-8", "replace"))
     message = tag_message(tag)
     return parse_records(message) if message else []
