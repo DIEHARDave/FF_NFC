@@ -266,6 +266,26 @@ class PluginTest(unittest.TestCase):
         self.assertEqual(gcode.scripts, [])
         self.assertEqual(gcode.in_command, ["CHANGE_ZCOLOR SLOT=1 HEX=112233 TYPE=PLA SILENT=1"])
 
+    def test_foreign_spool_id_falls_back_to_uid(self):
+        plugin, gcode, objects = make_plugin()
+        objects["webhooks"]._remote_methods["spoolman_set_active_spool"] = True
+        looked_up = []
+
+        class FakeSpoolman(object):
+            def get_spool(self, spool_id):
+                looked_up.append(spool_id)
+                raise klipper_plugin.SpoolmanError("no spool")
+
+            def find_spool_by_uid(self, uid):
+                return {"id": 12, "filament": {"material": "PLA"}, "extra": {}}
+
+        plugin.spoolman = FakeSpoolman()
+        payload = b'{"protocol":"openspool","type":"PLA","color_hex":"0022FF","spool_id":1776053727949617}'
+        from helpers import mime_record
+        scan = plugin._process(type2_tag(mime_record("application/json", payload)))
+        self.assertEqual(looked_up, [])          # implausible ID not even tried
+        self.assertEqual(scan.spool["id"], 12)
+
     def test_bad_vendor_key(self):
         with self.assertRaises(ConfigError):
             make_plugin({"bambu_key": "00" * 16})

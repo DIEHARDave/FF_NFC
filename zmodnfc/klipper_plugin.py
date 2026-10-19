@@ -30,6 +30,8 @@ SLOTS_PER_IFS = 4
 UNSET_MATERIALS = ("NONE", "N/A", "?", "")
 SPOOL_VARIABLE = "zmod_nfc_slot%d_spool"
 INSERT_POLL = 1.0
+# Larger "spool IDs" on tags are not Spoolman's (Spoolman counts from 1).
+MAX_SPOOLMAN_ID = 10 ** 7
 
 
 def resolve_material(material, valid_types):
@@ -303,9 +305,16 @@ class ZmodNfc(object):
             scan.spoolman_note = "" if not self.use_spoolman else "Spoolman not configured"
             return scan
         try:
-            if filament is not None and filament.spool_id:
-                scan.spool = self.spoolman.get_spool(filament.spool_id)
-            else:
+            # A spool ID on the tag may come from another app (OpenSpool
+            # phone apps write timestamps there), so a miss falls back to
+            # the tag's UID.
+            spool_id = filament.spool_id if filament is not None else None
+            if spool_id and 0 < spool_id < MAX_SPOOLMAN_ID:
+                try:
+                    scan.spool = self.spoolman.get_spool(spool_id)
+                except SpoolmanError as exc:
+                    LOGGER.info("zmod_nfc: tag spool ID %s: %s", spool_id, exc)
+            if scan.spool is None:
                 scan.spool = self.spoolman.find_spool_by_uid(tag.uid_hex)
             if scan.spool is None and self.auto_create and filament is not None \
                     and filament.material:
