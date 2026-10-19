@@ -24,6 +24,8 @@ from itertools import accumulate, repeat
 MAX_VERSION = 10
 # Below this many pixels per module a code is worth a sharper second look.
 SMALL_MODULE = 3.
+# How much flatter than wide (or narrower than tall) a finder may appear.
+MAX_SQUASH = 4.
 
 
 class QrError(Exception):
@@ -630,7 +632,7 @@ class _Finder(object):
         return (self.mx + self.my) / 2.
 
     def module_towards(self, other):
-        """Module size along the line to another finder."""
+        """Rough module size along the line to another finder."""
         dx, dy = other.x - self.x, other.y - self.y
         length = (dx * dx + dy * dy) ** 0.5 or 1.
         return ((self.mx * dx / length) ** 2 + (self.my * dy / length) ** 2) ** 0.5
@@ -666,9 +668,10 @@ def find_finders(img, width, height, row_step=2):
                 continue
             total = sum(counts)
             cx = starts[i + 2] + counts[2] / 2.
-            # Down may be foreshortened against across, up to 2:1 either way.
+            # Down may be foreshortened against across (a label lying on the
+            # bed, seen from a low camera), up to MAX_SQUASH either way.
             vertical = _cross_check(img, width, height, int(cx), y, 0, 1, counts[2] * 2)
-            if vertical is None or not total / 2. <= vertical[1] <= total * 2.:
+            if vertical is None or not total / MAX_SQUASH <= vertical[1] <= total * MAX_SQUASH:
                 continue
             cy = y + vertical[0]
             horizontal = _cross_check(img, width, height, int(cx), int(cy), 1, 0, counts[2] * 2)
@@ -691,8 +694,63 @@ def _distance2(a, b):
     return (a.x - b.x) ** 2 + (a.y - b.y) ** 2
 
 
-def _ordered_triples(finders, limit=8):
-    """Likely (top-left, top-right, bottom-left) finder triples, best first."""
+def _chord(img, width, height, finder, other):
+    """Length in pixels of the finder's 1:1:3:1:1 pattern along the line to
+    another finder, or None. The line between two finder centres runs along
+    one of the code's axes or diagonals, so this chord is the same number
+    of the code's own units for every finder of a code, whatever the
+    rotation, tilt or foreshortening."""
+    dx, dy = other.x - finder.x, other.y - finder.y
+    length = (dx * dx + dy * dy) ** 0.5
+    if not length:
+        return None
+    ux, uy = dx / length, dy / length
+    counts = [0] * 5
+    for sign, states in ((-1, (2, 1, 0)), (1, (2, 3, 4))):
+        t = 0. if sign < 0 else 1.
+        for state in states:
+            dark = 1 if state % 2 == 0 else 0
+            while True:
+                pixel = _pixel(img, width, height, finder.x + sign * t * ux, finder.y + sign * t * uy)
+                if pixel != dark:
+                    break
+                counts[state] += 1
+                t += 1.
+            if pixel < 0 and state not in (0, 4):
+                return None
+    if not _ratio_ok(counts, 0.75):
+        return None
+    return float(sum(counts))
+
+
+class _Geometry(object):
+    """Finder distances in units of their chords, cached per pair."""
+
+    def __init__(self, img, width, height):
+        self.img, self.width, self.height = img, width, height
+        self.chords = {}
+
+    def chord(self, finder, other):
+        key = (id(finder), id(other))
+        if key not in self.chords:
+            chord = _chord(self.img, self.width, self.height, finder, other)
+            if chord is None:
+                chord = 7 * finder.module_towards(other)
+            self.chords[key] = chord
+        return self.chords[key]
+
+    def apart(self, a, b):
+        """Distance between two finders in sevenths of their chords: dim - 7
+        for any two finders of one code (chords along a diagonal and the
+        diagonal itself are both sqrt(2) longer)."""
+        return 7 * (_distance2(a, b) ** 0.5) / ((self.chord(a, b) + self.chord(b, a)) / 2.)
+
+
+def _ordered_triples(geometry, finders, limit=8):
+    """Likely (top-left, top-right, bottom-left) finder triples, best first.
+    The three finders of a code are equally far apart in chord units. Which
+    one is the top-left corner is tried every way, nearest a right angle in
+    the picture first."""
     confirmed = [f for f in finders if f.count >= 2]
     pool = sorted(confirmed if len(confirmed) >= 3 else finders,
                   key=lambda f: -f.count)[:limit]
@@ -701,28 +759,30 @@ def _ordered_triples(finders, limit=8):
         for j in range(i + 1, len(pool)):
             for k in range(j + 1, len(pool)):
                 trio = (pool[i], pool[j], pool[k])
-                modules = [f.module for f in trio]
-                if max(modules) > 1.6 * min(modules):
+                sizes_ok = True
+                for axis in ("mx", "my"):
+                    sizes = [getattr(f, axis) for f in trio]
+                    if max(sizes) > 1.8 * min(sizes):
+                        sizes_ok = False
+                if not sizes_ok:
                     continue
-                module = sum(modules) / 3.
-                sides = sorted(((_distance2(trio[1], trio[2]), 0),
-                                (_distance2(trio[0], trio[2]), 1),
-                                (_distance2(trio[0], trio[1]), 2)))
-                (leg1, _), (leg2, _), (hypotenuse, corner) = sides
-                if leg1 <= 0 or (leg2 / leg1) > 2.6:
-                    continue
+                sides = [geometry.apart(trio[1], trio[2]), geometry.apart(trio[0], trio[2]),
+                         geometry.apart(trio[0], trio[1])]
+                mean = sum(sides) / 3.
                 # Finder centres are dim - 7 modules apart: 14 at version 1.
-                if not 12 <= (leg1 ** 0.5) / module <= (leg2 ** 0.5) / module <= 4 * MAX_VERSION + 25:
+                if not 11 <= mean <= 4 * MAX_VERSION + 15:
                     continue
-                skew = abs(hypotenuse - leg1 - leg2) / hypotenuse
-                if skew > 0.35:
+                spread = (max(sides) - min(sides)) / mean
+                if spread > 0.3:
                     continue
-                score = skew + (leg2 / leg1 - 1) + (max(modules) / min(modules) - 1)
-                tl = trio[corner]
-                p, q = [f for n, f in enumerate(trio) if n != corner]
-                cross = (p.x - tl.x) * (q.y - tl.y) - (p.y - tl.y) * (q.x - tl.x)
-                tr, bl = (p, q) if cross > 0 else (q, p)
-                scored.append((score, tl, tr, bl))
+                for corner in range(3):
+                    tl = trio[corner]
+                    p, q = [f for n, f in enumerate(trio) if n != corner]
+                    ax, ay, bx, by = p.x - tl.x, p.y - tl.y, q.x - tl.x, q.y - tl.y
+                    cross = ax * by - ay * bx
+                    cosine = abs(ax * bx + ay * by) / ((ax * ax + ay * ay) * (bx * bx + by * by)) ** 0.5
+                    tr, bl = (p, q) if cross > 0 else (q, p)
+                    scored.append((spread + cosine, tl, tr, bl))
     scored.sort(key=lambda item: item[0])
     return [item[1:] for item in scored]
 
@@ -829,13 +889,9 @@ def _find_alignment(img, width, height, dim, tl, tr, bl, h, radius_modules=4.):
     return sum(p[0] for p in best) / len(best), sum(p[1] for p in best) / len(best)
 
 
-def _dimensions(tl, tr, bl):
-    """Likely symbol sizes, nearest the estimate first. Each side is
-    measured with its two finders' module size along it, which holds up
-    under perspective and foreshortening better than one average."""
-    across = ((_distance2(tl, tr) ** 0.5) / ((tl.module_towards(tr) + tr.module_towards(tl)) / 2.)
-              + (_distance2(tl, bl) ** 0.5) / ((tl.module_towards(bl) + bl.module_towards(tl)) / 2.)) / 2.
-    estimate = across + 7
+def _dimensions(geometry, tl, tr, bl):
+    """Likely symbol sizes, nearest the estimate first."""
+    estimate = (geometry.apart(tl, tr) + geometry.apart(tl, bl)) / 2. + 7
     nearest = sorted(range(21, 17 + 4 * MAX_VERSION + 1, 4), key=lambda d: abs(d - estimate))
     return nearest[:3]
 
@@ -862,9 +918,9 @@ def _transforms(img, width, height, dim, tl, tr, bl):
     yield h
 
 
-def _decode_triple(img, width, height, tl, tr, bl):
+def _decode_triple(img, width, height, geometry, tl, tr, bl):
     dims = []
-    for dim in _dimensions(tl, tr, bl):
+    for dim in _dimensions(geometry, tl, tr, bl):
         h = _transform(dim, tl, tr, bl)
         dims.append((-_timing_score(img, width, height, h, dim), dim))
     queue = [dim for _, dim in sorted(dims)]
@@ -913,7 +969,7 @@ def _small_pairs(finders, width, height, limit=2):
     return boxes
 
 
-def decode_image(pixels, width, height, max_triples=6, small=None):
+def decode_image(pixels, width, height, max_triples=9, small=None):
     """Text of the first QR code found in an 8-bit grayscale image (one byte
     per pixel, rows top to bottom), or None.
 
@@ -922,10 +978,11 @@ def decode_image(pixels, width, height, max_triples=6, small=None):
     bottom) boxes, so the caller can try again with a sharper crop."""
     img = binarize(pixels, width, height)
     finders = find_finders(img, width, height)
-    triples = _ordered_triples(finders)[:max_triples] if len(finders) >= 3 else []
+    geometry = _Geometry(img, width, height)
+    triples = _ordered_triples(geometry, finders)[:max_triples] if len(finders) >= 3 else []
     for tl, tr, bl in triples:
         try:
-            text = _decode_triple(img, width, height, tl, tr, bl)
+            text = _decode_triple(img, width, height, geometry, tl, tr, bl)
         except QrError:
             text = None
         if text is not None:

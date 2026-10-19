@@ -28,7 +28,7 @@ from .decoders import vendors
 from .readers.base import ReaderError
 from .readers.detect import READER_TYPES, open_reader
 from .spoolman import Spoolman, SpoolmanError, normalize_uid, spool_color, spool_title, spool_uids
-from .camera import DEFAULT_URL, DEFAULT_WIDTH
+from .camera import DECODERS as QR_DECODERS, DEFAULT_CHROOT, DEFAULT_URL, DEFAULT_WIDTH
 from .decoders.ndef import text_message, type2_image
 from .tag import KIND_QR, KIND_TYPE2, TECH_CAMERA, TECH_ISO14443A, Tag, normalize_color
 
@@ -167,6 +167,8 @@ class ZmodNfc(object):
         self.disabled_formats = [f.strip() for f in config.get("disabled_formats", "").split(",")
                                  if f.strip()]
         self.qr_url = config.get("qr_snapshot_url", DEFAULT_URL)
+        self.qr_decoder = config.getchoice("qr_decoder", {d: d for d in QR_DECODERS}, "auto")
+        self.qr_chroot = config.get("qr_chroot", DEFAULT_CHROOT)
         self.qr_ffmpeg = config.get("qr_ffmpeg", "")
         self.qr_scan_time = config.getfloat("qr_scan_time", 20., minval=1., maxval=120.)
         self.qr_width = config.getint("qr_width", DEFAULT_WIDTH, minval=320, maxval=4096)
@@ -774,7 +776,8 @@ class ZmodNfc(object):
         seconds = gcmd.get_float("TIME", self.qr_scan_time, minval=1., maxval=120.)
         command = [sys.executable, "-m", "zmodnfc.camera", "--url", self.qr_url,
                    "--time", "%g" % seconds, "--width", str(self.qr_width), "--nice", "19",
-                   "--verbose", "--save-dir", QR_FRAMES_DIR]
+                   "--verbose", "--save-dir", QR_FRAMES_DIR,
+                   "--decoder", self.qr_decoder, "--chroot", self.qr_chroot]
         if self.qr_ffmpeg:
             command += ["--ffmpeg", self.qr_ffmpeg]
         env = dict(os.environ)
@@ -813,7 +816,7 @@ class ZmodNfc(object):
             except ValueError:
                 continue
         for line in err.decode("utf-8", "replace").splitlines():
-            if line.startswith("frame "):
+            if line.startswith(("frame ", "decoder: ")):
                 LOGGER.info("zmod_nfc: camera %s", line)
         if not result:
             message = err.decode("utf-8", "replace").strip().splitlines()

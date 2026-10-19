@@ -5,6 +5,9 @@ import json
 import math
 import os
 import random
+import shutil
+import subprocess
+import tempfile
 import unittest
 
 import helpers  # noqa: F401  (puts the plugin on sys.path)
@@ -26,9 +29,10 @@ def load_codes():
 
 
 def render(bits, width, height, module, angle=0., tilt=0., noise=0, dark=40, light=200,
-           gradient=0, seed=1):
+           gradient=0, squash=1., seed=1):
     """Grayscale image of a code: module pixels per module, rotated by angle
-    degrees and tilted in perspective, with a quiet zone of light paper."""
+    degrees, squashed vertically (a label lying flat, seen from low) and
+    tilted in perspective, with a quiet zone of light paper."""
     rnd = random.Random(seed)
     dim = len(bits)
     cos, sin = math.cos(math.radians(angle)), math.sin(math.radians(angle))
@@ -37,7 +41,7 @@ def render(bits, width, height, module, angle=0., tilt=0., noise=0, dark=40, lig
         for x in range(width):
             dx, dy = x + 0.5 - width / 2., y + 0.5 - height / 2.
             depth = 1. / (1 - tilt * dy / height)
-            dx, dy = dx * depth, dy * depth
+            dx, dy = dx * depth, dy * depth * squash
             u = int(math.floor((cos * dx + sin * dy) / module + dim / 2.))
             v = int(math.floor((-sin * dx + cos * dy) / module + dim / 2.))
             value = light + gradient * (x / float(width) - 0.5)
@@ -121,6 +125,11 @@ class ImageTest(unittest.TestCase):
         code["bits"] = [list(row) for row in zip(*code["bits"])]
         self.check(code, module=4)
 
+    def test_lying_flat(self):
+        # Rotated, then squashed 2.5:1: neither axis of the picture is one
+        # of the code's.
+        self.check(self.codes[1], width=260, height=160, module=5, angle=20, squash=2.5)
+
     def test_larger_version(self):
         self.check(self.codes[7], width=280, height=280, module=4, angle=4)
 
@@ -176,6 +185,62 @@ class CameraTest(unittest.TestCase):
     def test_not_a_jpeg(self):
         with self.assertRaises(camera.CameraError):
             camera.jpeg_size(b"400: Not Found!")
+
+    def jpeg(self, width, height):
+        return (b"\xff\xd8\xff\xc0\x00\x11\x08" + height.to_bytes(2, "big")
+                + width.to_bytes(2, "big") + b"\x03" + b"\x00" * 9)
+
+    def test_decoder_choice(self):
+        root = tempfile.mkdtemp()
+        try:
+            self.assertFalse(camera.TurboJpegDecoder.available(root))
+            with self.assertRaises(camera.CameraError):
+                camera.make_decoder("turbojpeg", root)
+            for name in ("usr/lib/libturbojpeg.so.0", "usr/bin/python3"):
+                os.makedirs(os.path.join(root, os.path.dirname(name)), exist_ok=True)
+                open(os.path.join(root, name), "w").close()
+            self.assertEqual(camera.make_decoder("auto", root).name, "turbojpeg")
+        finally:
+            shutil.rmtree(root)
+
+    def test_turbojpeg_scaling_and_crop(self):
+        decoder = camera.TurboJpegDecoder("/chroot")
+        calls = []
+
+        def run(command, **kw):
+            calls.append(command)
+            factor = int(command[-1])
+            width, height = 2048 // factor, 1536 // factor
+            pixels = bytes(range(256)) * (width * height // 256)
+            return subprocess.CompletedProcess(command, 0, b"%d %d\n" % (width, height) + pixels, b"")
+
+        original = camera.subprocess.run
+        camera.subprocess.run = run
+        try:
+            pixels, width, height = decoder.gray(self.jpeg(2048, 1536), 1024)
+            self.assertEqual((width, height, len(pixels)), (1024, 768, 1024 * 768))
+            self.assertEqual(calls[-1][:5], [decoder.chroot, "/chroot", "python3", "-c",
+                                             camera._TURBOJPEG_HELPER])
+            self.assertEqual(calls[-1][-1], "2")
+            pixels, width, height = decoder.gray(self.jpeg(2048, 1536), crop=(101, 51, 133, 85))
+            self.assertEqual(calls[-1][-1], "1")      # crops come from full resolution
+            self.assertEqual((width, height), (32, 34))
+            # The box is even-aligned to start at (100, 50).
+            self.assertEqual(pixels[:2], bytes([(50 * 2048 + 100) % 256, (50 * 2048 + 101) % 256]))
+        finally:
+            camera.subprocess.run = original
+
+    def test_turbojpeg_failure(self):
+        decoder = camera.TurboJpegDecoder("/chroot")
+        original = camera.subprocess.run
+        camera.subprocess.run = lambda command, **kw: subprocess.CompletedProcess(
+            command, 1, b"", b"Not a JPEG file: starts with 0x34 0x30\n")
+        try:
+            with self.assertRaises(camera.CameraError) as caught:
+                decoder.gray(self.jpeg(640, 480))
+            self.assertIn("Not a JPEG file", str(caught.exception))
+        finally:
+            camera.subprocess.run = original
 
 
 if __name__ == "__main__":

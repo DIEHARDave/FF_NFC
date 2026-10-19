@@ -9,7 +9,7 @@ the filament into an empty slot, and the slot gets the spool's material and
 color. If Spoolman is set up, the slot also gets the Spoolman spool.
 
 No reader? Spoolman's printed QR labels can be read with the printer's own
-camera instead (see [Camera QR labels](#camera-qr-labels)).
+camera instead, on both printers (see [Camera QR labels](#camera-qr-labels)).
 
 ```
 scan tag ──► decode (Bambu, Creality, OpenSpool, OpenPrintTag, ...)
@@ -177,26 +177,38 @@ It reads:
 * **OpenSpool JSON** and the plain-text formats above (`PLA:FF0000`, ...).
 
 The scan looks for up to 20 seconds (`qr_scan_time`, or
-`NFC_QR_SCAN TIME=<s>`), at about one camera frame every 1.5 seconds on the
-AD5X. Codes up to version 10 (271 bytes) are read. The code's modules (its
-small squares) need about 3 camera pixels each at the camera's full 2048
-pixel width, so print labels large enough and bring them close. Scanning is
-off while printing unless `scan_while_printing: True`.
+`NFC_QR_SCAN TIME=<s>`). If it finds nothing, the prompt says so and offers
+**Try again**. Codes up to version 10 (271 bytes) are read. Scanning is off
+while printing unless `scan_while_printing: True`.
 
-> **Status: new.** Tested on an AD5X with a printed Spoolman label: read in
-> about 5 seconds, then assigned to an IFS slot through zmod_afclite. The QR
-> reader also has tests against reference codes and camera-like images.
-> Reports from other setups are welcome.
+| Printer | Camera | Time per frame |
+|---------|--------|----------------|
+| AD5X | 2048x1536, above and in front of the bed | about 2 s |
+| Creator 5 | 1280x720, low, looking across the bed | about 2.3 s |
+
+The code's modules (its small squares) need about 2 to 3 camera pixels each,
+so print labels large enough and bring them close. A label held up facing
+the camera reads best. Lying flat on the bed works too, even when the camera
+sees it squashed to a third of its height, but it then needs to be larger.
+
+> **Status: new.** Tested with a printed Spoolman label on an AD5X (assigned
+> to an IFS slot) and on a Creator 5 (assigned to a toolhead), both through
+> zmod_afclite; each read the label within about 5 seconds. The QR reader
+> also has tests against reference codes and camera-like images. Reports
+> from other setups are welcome.
 
 How it works: the plugin starts a low-priority child process that fetches
-snapshots from Zmod's camera streamer, has the firmware's ffmpeg turn each
-into a scaled-down grayscale frame, and decodes it with a QR reader written
-in pure Python (`zmodnfc/qr.py`). Klipper itself does none of the image
-work. The camera, ffmpeg and frame size are configurable; see the `qr_`
+snapshots from Zmod's camera streamer (`http://127.0.0.1:8080/?action=snapshot`
+on both printers), turns each into a grayscale frame with libturbojpeg in
+Zmod's chroot (or with ffmpeg where its build can; the Creator 5's cannot),
+and decodes it with a QR reader written in pure Python (`zmodnfc/qr.py`).
+Klipper itself does none of the image work. The frames of the last scan are
+kept in `/tmp/zmod_nfc_qr/`, and the per-frame timings go to the Klipper
+log. The camera URL, decoder and frame size are configurable; see the `qr_`
 options in [`zmod_nfc.cfg`](zmod_nfc.cfg). To try a saved snapshot:
 
 ```sh
-python3 -m zmodnfc.camera --image label.jpg   # from the plugin directory
+python3 -m zmodnfc.camera --image label.jpg --verbose   # from the plugin directory
 ```
 
 ## Commands
