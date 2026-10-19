@@ -253,6 +253,10 @@ def read_mifare_classic(session, keysets, reader_name=""):
         tag.sector_keys[sector] = opened.name
     tag.memory = bytes(memory)
     LOGGER.debug("zmod_nfc: MIFARE Classic sectors read: %s", sorted(tag.sector_keys.items()))
+    if not tag.sectors_read:
+        detail = session.describe_failure() if hasattr(session, "describe_failure") else ""
+        LOGGER.info("zmod_nfc: no MIFARE Classic sector opened with %s (%s)",
+                    ", ".join(k.name for k in keysets) or "the default keys", detail)
     return tag
 
 

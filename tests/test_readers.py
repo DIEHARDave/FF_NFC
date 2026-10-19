@@ -135,6 +135,72 @@ class Acr122uTest(unittest.TestCase):
         self.assertLess(len(tag.memory), 300)
 
 
+class FakeAcr122uMifare(object):
+    """ACR122U with a MIFARE Classic card: PC/SC auth always fails (like the
+    real reader once the card is halted), the PN532 passthrough works."""
+
+    def __init__(self, uid, memory, keys_a):
+        self.uid = uid
+        self.memory = memory
+        self.keys_a = keys_a          # sector -> key
+        self.authed = None
+        self.halted = False
+
+    def apdu(self, cmd):
+        ok = b"\x90\x00"
+        if cmd[:2] == b"\xff\xca":
+            return self.uid + ok
+        if cmd[:2] in (b"\xff\x82", b"\xff\x86"):
+            return b"\x63\x00"
+        if cmd[:5] == b"\xff\x00\x00\x00" + bytes([len(cmd) - 5]) and cmd[5] == 0xD4:
+            pn = cmd[6]
+            body = cmd[7:]
+            if pn == 0x02:
+                return b"\xd5\x03\x32\x01\x06\x07" + ok
+            if pn == 0x4A:
+                self.halted = False
+                self.authed = None
+                return b"\xd5\x4b\x01\x01\x00\x04\x08\x04" + self.uid + ok
+            if pn == 0x40 and not self.halted:
+                op, block = body[1], body[2]
+                if op in (0x60, 0x61):
+                    sector = block // 4
+                    if body[3:9] == self.keys_a.get(sector) and body[9:13] == self.uid:
+                        self.authed = sector
+                        return b"\xd5\x41\x00" + ok
+                    self.halted = True
+                    return b"\xd5\x41\x14" + ok
+                if op == 0x30 and self.authed == block // 4:
+                    return b"\xd5\x41\x00" + self.memory[block * 16:block * 16 + 16] + ok
+            return b"\xd5\x41\x01" + ok
+        return b"\x6d\x00"
+
+
+class Acr122uMifareTest(unittest.TestCase):
+    def test_snapmaker_tag_through_pn532(self):
+        from zmodnfc import decoders
+        from zmodnfc.decoders import vendors
+        uid = bytes.fromhex("012772F0")
+        keyset = vendors.snapmaker_keysets(uid, {})[0]
+        memory = bytearray(1024)
+        memory[16:25] = b"Snapmaker"
+        memory[66] = 1              # PLA
+        memory[68] = 4              # Silk
+        memory[72] = 1              # one colour
+        memory[80:83] = b"\x12\x34\x56"
+        memory[128:130] = (175).to_bytes(2, "little")
+        memory[130:132] = (500).to_bytes(2, "little")
+        slot = FakeAcr122uMifare(uid, bytes(memory), {s: keyset.keys_a[s] for s in range(16)})
+        atr = bytes.fromhex("3B8F8001804F0CA000000306030001000000006A")
+        session = ccid.CcidSession(slot, atr)
+        tag = base.read_mifare_classic(session, decoders.mifare_keysets(uid, {}))
+        self.assertEqual(tag.sectors_read, set(range(16)))
+        filament, _ = decoders.decode(tag)
+        self.assertEqual((filament.fmt, filament.material, filament.modifiers, filament.color,
+                          filament.weight, filament.diameter),
+                         ("Snapmaker", "PLA", ["Silk"], "123456", 500, 1.75))
+
+
 class FakePort(object):
     def __init__(self, replies):
         self.replies = list(replies)

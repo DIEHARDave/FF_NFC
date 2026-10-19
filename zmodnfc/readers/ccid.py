@@ -142,6 +142,8 @@ class CcidSession(CardSession):
         self.atqa = b""
         self._key_loaded = None
         self._type2_method = None
+        self._pn532_ok = None
+        self._last_status = None
 
     @staticmethod
     def _ok(resp):
@@ -191,27 +193,79 @@ class CcidSession(CardSession):
     def _read_binary_16(self, page):
         return self._read_binary(page, 16)
 
+    # PN532 passthrough (ACR122U) -----------------------------------------
+
+    def _pn532(self, command, params=b""):
+        """A PN532 command sent through the reader (direct transmit,
+        FF 00 00 00); the response data after D5 <cmd+1>, or None."""
+        body = bytes([0xD4, command]) + bytes(params)
+        resp = self._ok(self.slot.apdu(bytes([0xFF, 0x00, 0x00, 0x00, len(body)]) + body))
+        if resp is None or len(resp) < 2 or resp[0] != 0xD5 or resp[1] != command + 1:
+            return None
+        return resp[2:]
+
+    def _has_pn532(self):
+        """True when the reader is a PN532 underneath (ACR122U). Its PC/SC
+        MIFARE commands cannot recover a card halted by a wrong key, so
+        MIFARE Classic goes through the PN532 like libnfc does."""
+        if self._pn532_ok is None:
+            fw = self._pn532(0x02)                  # GetFirmwareVersion
+            self._pn532_ok = bool(fw) and fw[0] == 0x32
+            LOGGER.debug("zmod_nfc: CCID PN532 passthrough: %s", self._pn532_ok)
+        return self._pn532_ok
+
+    def _exchange(self, data):
+        resp = self._pn532(0x40, b"\x01" + data)    # InDataExchange, target 1
+        if resp is None or not resp or resp[0] & 0x3F:
+            self._last_status = resp[0] if resp else None
+            return None
+        return resp[1:]
+
+    # MIFARE Classic -------------------------------------------------------
+
     def mifare_auth(self, block, key, key_b=False):
+        cmd = 0x61 if key_b else 0x60
+        if self._has_pn532():
+            return self._exchange(bytes([cmd, block]) + key + self.uid[-4:]) is not None
         if self._key_loaded != key:
             # Volatile key slot 0.
-            if self._ok(self.slot.apdu(b"\xff\x82\x00\x00\x06" + key)) is None:
+            resp = self.slot.apdu(b"\xff\x82\x00\x00\x06" + key)
+            if self._ok(resp) is None:
+                self._last_status = resp
                 return False
             self._key_loaded = key
-        auth = bytes([0xFF, 0x86, 0x00, 0x00, 0x05, 0x01, 0x00, block,
-                      0x61 if key_b else 0x60, 0x00])
-        return self._ok(self.slot.apdu(auth)) is not None
+        resp = self.slot.apdu(bytes([0xFF, 0x86, 0x00, 0x00, 0x05, 0x01, 0x00, block, cmd, 0x00]))
+        if self._ok(resp) is None:
+            self._last_status = resp
+            return False
+        return True
 
     def mifare_read(self, block):
+        if self._has_pn532():
+            data = self._exchange(bytes([0x30, block]))
+            return data[:16] if data is not None and len(data) >= 16 else None
         return self._read_binary(block, 16)
 
     def reselect(self):
+        self._key_loaded = None
+        if self._has_pn532():
+            # InListPassiveTarget wakes the halted card again.
+            resp = self._pn532(0x4A, b"\x01\x00")
+            if resp and resp[0] >= 1 and len(resp) >= 6:
+                return bytes(resp[6:6 + resp[5]]) == self.uid
+            return False
         self.slot.power_off()
         atr = self.slot.power_on()
         if atr is None:
             return False
-        uid = self._ok(self.slot.apdu(b"\xff\xca\x00\x00\x00"))
-        self._key_loaded = None
-        return uid is not None
+        return self._ok(self.slot.apdu(b"\xff\xca\x00\x00\x00")) is not None
+
+    def describe_failure(self):
+        """Last refused MIFARE response, for the log."""
+        status = self._last_status
+        if isinstance(status, bytes):
+            return status.hex()
+        return "PN532 status %s" % (("0x%02X" % status) if status is not None else "none")
 
     def iso15693_read(self, first_block, count):
         data = bytearray()
