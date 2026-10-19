@@ -15,10 +15,12 @@ scan tag ──► decode (Bambu, Creality, OpenSpool, OpenPrintTag, ...)
          ──► Zmod slot color + material  (+ Spoolman spool via zmod_afclite)
 ```
 
-> **Status: early release.** The decoders, the Klipper integration and the
-> USB plumbing have unit tests, and the tests pass on an AD5X under Klipper's
-> Python 3.8. The reader drivers have **not yet been run against physical
-> readers**. Reports from PN532 and ACR1552U owners are very welcome (see
+> **Status: early release.** Tested end to end on an **AD5X** and a
+> **Creator 5** with an **ACR122U** reader: scan, prompt, slot assignment and
+> filament insert. The decoders, the Klipper integration and the USB plumbing
+> also have unit tests, which pass under Klipper's Python 3.8. The PN532,
+> ACR1552U and PN5180 drivers have **not yet been run against physical
+> readers**. Reports from owners of those readers are very welcome (see
 > [Reporting a tag](#reporting-a-tag)).
 
 ## Readers
@@ -26,7 +28,8 @@ scan tag ──► decode (Bambu, Creality, OpenSpool, OpenPrintTag, ...)
 | Reader | Connection | Tags | Notes |
 |--------|------------|------|-------|
 | **ACR1552U** | USB (CCID) | ISO 14443A + ISO 15693 | Plug in. Driven directly over usbfs; no pcscd needed. |
-| Other PC/SC readers: ACR122U, ACR1252U, ACR1255U, Identiv, ... | USB (CCID) | depends on the reader | Same driver: any reader with the PC/SC Part 3 storage-card commands. |
+| **ACR122U** | USB (CCID) | ISO 14443A | Tested. MIFARE Classic is read through its internal PN532. |
+| Other PC/SC readers: ACR1252U, ACR1255U, Identiv, ... | USB (CCID) | depends on the reader | Same driver: any reader with the PC/SC Part 3 storage-card commands. |
 | **PN532** | USB-serial adapter (CH340, CP210x, PL2303, FTDI) | ISO 14443A | Set the board to **HSU/UART** mode (both switches off on the common red and blue boards). Cannot read ISO 15693 (OpenPrintTag). |
 | **PN5180** | USB through a bridge MCU | ISO 14443A + ISO 15693 | The PN5180 has no USB of its own. The driver is written; the bridge firmware is planned. See [docs/pn5180-bridge.md](docs/pn5180-bridge.md). |
 
