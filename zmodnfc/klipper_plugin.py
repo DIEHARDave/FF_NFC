@@ -141,6 +141,8 @@ class ZmodNfc(object):
         self.use_spoolman = config.getboolean("spoolman", True)
         self.auto_create = config.getboolean("spoolman_auto_create", False)
         self.bind_card_uid = config.getboolean("bind_card_uid", True)
+        self.skip_zmod_prompt = config.getboolean("skip_zmod_color_prompt", True)
+        self.skip_window = config.getfloat("skip_zmod_color_window", 300., minval=0.)
         self.disabled_formats = [f.strip() for f in config.get("disabled_formats", "").split(",")
                                  if f.strip()]
         self.spoolman = Spoolman(config.get("moonraker_url", "http://127.0.0.1:7125"))
@@ -166,6 +168,8 @@ class ZmodNfc(object):
         self._thread = None
         self._stop = threading.Event()
         self._rescan = threading.Event()
+        self._assigned = {}          # slot -> reactor time of the NFC assignment
+        self._zmod_run_zcolor = None
 
         for cmd, desc in (
                 ("NFC_STATUS", "Show the NFC reader state and the last scanned tag"),
@@ -180,6 +184,7 @@ class ZmodNfc(object):
                 ("NFC_ENABLE", "Resume handling scanned tags"),
                 ("NFC_DISABLE", "Ignore scanned tags until NFC_ENABLE")):
             self.gcode.register_command(cmd, getattr(self, "cmd_" + cmd), desc=desc)
+        self.printer.register_event_handler("klippy:connect", self._handle_connect)
         self.printer.register_event_handler("klippy:ready", self._handle_ready)
         self.printer.register_event_handler("klippy:disconnect", self._handle_disconnect)
 
@@ -218,6 +223,32 @@ class ZmodNfc(object):
         return settings
 
     # Lifecycle ------------------------------------------------------------
+
+    def _handle_connect(self):
+        # After a filament insert (AD5X IFS auto-load, Creator 5 head sensor)
+        # Zmod runs RUN_ZCOLOR SLOT=<n> HIDE=1, a popup to pick the slot's
+        # colour and material. Wrap it so slots set from a tag skip it.
+        if self.skip_zmod_prompt and "RUN_ZCOLOR" in self.gcode.ready_gcode_handlers:
+            self._zmod_run_zcolor = self.gcode.register_command("RUN_ZCOLOR", None)
+            self.gcode.register_command(
+                "RUN_ZCOLOR", self.cmd_RUN_ZCOLOR,
+                desc="Zmod slot colour popup (skipped for slots set by zmod_nfc)")
+
+    def cmd_RUN_ZCOLOR(self, gcmd):
+        if gcmd.get_int("HIDE", 0) == 1:
+            slot = gcmd.get_int("SLOT", 0)
+            # The tag's prompt is still open: the inserted slot is its answer.
+            if self.pending is not None and slot in self._slots()["slots"]:
+                scan = self.pending
+                self._close_prompt()
+                self._assign(scan, slot, gcmd.respond_info)
+                self._assigned.pop(slot, None)   # this was the popup to skip
+                return
+            assigned = self._assigned.pop(slot, None)
+            if assigned is not None and self.reactor.monotonic() - assigned <= self.skip_window:
+                gcmd.respond_info("NFC: slot %d was set from its tag; skipping the colour selection" % slot)
+                return
+        self._zmod_run_zcolor(gcmd)
 
     def _handle_ready(self):
         self.zmod_color = self.printer.lookup_object("zmod_color", None)
@@ -512,6 +543,8 @@ class ZmodNfc(object):
         if slot_number not in slots["slots"]:
             raise self.printer.command_error("NFC: there is no slot %d" % slot_number)
         label = self._slot_label(slots, slot_number)
+        # Zmod's own colour popup for this slot's next insert is skipped.
+        self._assigned[slot_number] = self.reactor.monotonic()
         spool = scan.spool
         afclite = self.printer.lookup_object("zmod_afclite", None)
         if spool is not None and afclite is not None:

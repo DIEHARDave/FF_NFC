@@ -107,6 +107,12 @@ Klipper merges both `[zmod_nfc]` sections, and yours wins.
 3. The slot gets the material and color. On the Creator 5, the color is
    snapped to the closest color in its palette.
 
+Zmod normally asks for the color and material after you insert filament
+(after the AD5X IFS loads it, or when a Creator 5 head sensor sees it). For a
+slot set from a tag, zmod_nfc skips that popup. If the tag's prompt is still
+open when the popup would appear, zmod_nfc assigns the spool to that slot
+instead. Set `skip_zmod_color_prompt: False` to keep Zmod's popup.
+
 Tags are ignored while printing unless `scan_while_printing: True`.
 
 ### With Spoolman

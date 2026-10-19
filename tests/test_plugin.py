@@ -48,7 +48,13 @@ class FakeGcode(object):
         self.scripts = []
         self.in_command = []
 
+    @property
+    def ready_gcode_handlers(self):
+        return self.commands
+
     def register_command(self, name, fn, desc=None):
+        if fn is None:
+            return self.commands.pop(name, None)
         self.commands[name] = fn
 
     def respond_raw(self, msg):
@@ -285,6 +291,40 @@ class PluginTest(unittest.TestCase):
         scan = plugin._process(type2_tag(mime_record("application/json", payload)))
         self.assertEqual(looked_up, [])          # implausible ID not even tried
         self.assertEqual(scan.spool["id"], 12)
+
+    def _with_zmod_popup(self):
+        plugin, gcode, objects = make_plugin()
+        popups = []
+        gcode.commands["RUN_ZCOLOR"] = lambda gcmd: popups.append(gcmd.params)
+        plugin._handle_connect()
+        return plugin, gcode, popups
+
+    def test_zmod_popup_skipped_after_assignment(self):
+        plugin, gcode, popups = self._with_zmod_popup()
+        self.scan(plugin, "PLA:112233")
+        gcode.commands["NFC_ASSIGN"](FakeGcmd(gcode, SLOT=2))
+        gcode.commands["RUN_ZCOLOR"](FakeGcmd(gcode, SLOT=2, HIDE=1))
+        self.assertEqual(popups, [])
+        self.assertIn("skipping the colour selection", gcode.info[-1])
+        # Only once: the next insert into slot 2 shows Zmod's popup again.
+        gcode.commands["RUN_ZCOLOR"](FakeGcmd(gcode, SLOT=2, HIDE=1))
+        self.assertEqual(len(popups), 1)
+
+    def test_zmod_popup_assigns_pending_scan(self):
+        plugin, gcode, popups = self._with_zmod_popup()
+        self.scan(plugin, "PETG:445566")
+        gcode.commands["RUN_ZCOLOR"](FakeGcmd(gcode, SLOT=1, HIDE=1))
+        self.assertEqual(popups, [])
+        self.assertEqual(gcode.in_command, ["CHANGE_ZCOLOR SLOT=1 HEX=445566 TYPE=PETG SILENT=1"])
+        self.assertIsNone(plugin.pending)
+        gcode.commands["RUN_ZCOLOR"](FakeGcmd(gcode, SLOT=1, HIDE=1))
+        self.assertEqual(len(popups), 1)
+
+    def test_zmod_popup_untouched_otherwise(self):
+        plugin, gcode, popups = self._with_zmod_popup()
+        gcode.commands["RUN_ZCOLOR"](FakeGcmd(gcode, SLOT=3, HIDE=1))
+        gcode.commands["RUN_ZCOLOR"](FakeGcmd(gcode, SLOT=3, HEX="FFFFFF", TYPE="PLA"))
+        self.assertEqual(len(popups), 2)
 
     def test_bad_vendor_key(self):
         with self.assertRaises(ConfigError):
