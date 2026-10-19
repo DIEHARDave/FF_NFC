@@ -315,7 +315,12 @@ class ZmodNfc(object):
                 reader = None
                 self._stop.wait(self.retry_interval)
                 continue
-            if tag is not None:
+            if tag is not None and tag.incomplete:
+                # Partial data would set a slot without weight or temperatures.
+                self._post(self.gcode.respond_info,
+                           "NFC: the tag left the reader too soon (%s). Hold the spool"
+                           " on the reader until it beeps." % tag.describe())
+            elif tag is not None:
                 scan = self._process(tag)
                 self._post(self._handle_scan, scan)
             self._rescan.wait(self.poll_interval)

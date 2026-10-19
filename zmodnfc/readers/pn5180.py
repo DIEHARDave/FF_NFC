@@ -382,7 +382,7 @@ class Pn5180Reader(Reader):
             return None
         tag = self.read_card(session)
         self.chip.rf_off()
-        if tag is not None:
+        if tag is not None and not tag.incomplete:
             self._present = session.uid
         return tag
 

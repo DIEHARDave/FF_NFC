@@ -59,7 +59,21 @@ class ReadTest(unittest.TestCase):
         self.assertEqual(tag.sectors_read, set(range(16)))
         self.assertEqual(tag.sector_keys[1], "Vendor")
         self.assertEqual(tag.sector_keys[0], "default")
-        self.assertEqual(tag.memory, memory)
+        self.assertFalse(tag.incomplete)
+        # Data blocks are read; sector trailers are skipped and stay zero.
+        for sector in range(16):
+            start = sector * 64
+            self.assertEqual(tag.memory[start:start + 48], memory[start:start + 48])
+            self.assertEqual(tag.memory[start + 48:start + 64], b"\x00" * 16)
+
+    def test_mifare_trailers_not_read(self):
+        card = FakeCard(b"\x55" * 1024, sak=0x08, keys={s: b"\xff" * 6 for s in range(16)})
+        reads = []
+        card_read = card.mifare_read
+        card.mifare_read = lambda block: reads.append(block) or card_read(block)
+        base.read_mifare_classic(card, [])
+        self.assertEqual(len(reads), 16 * 3)
+        self.assertFalse(any(block % 4 == 3 for block in reads))
 
     def test_mifare_unreadable_sectors_are_zero(self):
         keys = {0: b"\xff" * 6}
@@ -67,6 +81,15 @@ class ReadTest(unittest.TestCase):
         tag = base.read_mifare_classic(card, [])
         self.assertEqual(tag.sectors_read, {0})
         self.assertEqual(tag.memory[64:80], b"\x00" * 16)
+        self.assertFalse(tag.incomplete)
+
+    def test_mifare_card_leaving_marks_tag_incomplete(self):
+        # Sectors 0 and 1 open, then the card leaves the field.
+        card = FakeCard(b"\x55" * 1024, sak=0x08, keys={0: b"\xff" * 6, 1: b"\xff" * 6})
+        card.reselect = lambda: False
+        tag = base.read_mifare_classic(card, [])
+        self.assertEqual(tag.sectors_read, {0, 1})
+        self.assertTrue(tag.incomplete)
 
 
 class IoctlTest(unittest.TestCase):
@@ -201,6 +224,82 @@ class Acr122uMifareTest(unittest.TestCase):
                           filament.weight, filament.diameter),
                          ("Snapmaker", "PLA", ["Silk"], "123456", 500, 1.75))
         self.assertEqual(filament.manufactured, "2026-03-12")
+
+
+class FakeAcr122uReaderSlot(FakeAcr122uMifare):
+    """The MIFARE card above in a CCID slot, with the reader's escapes
+    recorded. leave_after: the card leaves after that many successful
+    authentications."""
+
+    bulk_out = type("Endpoint", (), {"address": 0x02})()
+    slot = 0
+
+    def __init__(self, uid, memory, keys_a, leave_after=None):
+        FakeAcr122uMifare.__init__(self, uid, memory, keys_a)
+        self.escapes = []
+        self.leave_after = leave_after
+        self.auths = 0
+        self.gone = False
+
+    def icc_status(self):
+        return ccid.ICC_ABSENT if self.gone else ccid.ICC_PRESENT_ACTIVE
+
+    def power_on(self):
+        return bytes.fromhex("3B8F8001804F0CA000000306030001000000006A")
+
+    def power_off(self):
+        pass
+
+    def escape(self, command):
+        self.escapes.append(bytes(command))
+        return b""
+
+    def apdu(self, cmd):
+        if self.gone:
+            if cmd[5:7] == b"\xd4\x4a":
+                return b"\xd5\x4b\x00\x90\x00"     # no target
+            return b"\x63\x00"
+        resp = FakeAcr122uMifare.apdu(self, cmd)
+        if cmd[5:7] == b"\xd4\x40" and cmd[8] in (0x60, 0x61) and resp[2] == 0x00:
+            self.auths += 1
+            if self.leave_after is not None and self.auths >= self.leave_after:
+                self.gone = True
+        return resp
+
+
+class Acr122uBeepTest(unittest.TestCase):
+    def reader(self, leave_after=None):
+        from zmodnfc import decoders
+        uid = bytes.fromhex("40F7EA3E")
+        keyset = decoders.mifare_keysets(uid, {})
+        snapmaker = [k for k in keyset if k.name == "Snapmaker"][0]
+        slot = FakeAcr122uReaderSlot(uid, bytes(1024), {s: snapmaker.keys_a[s] for s in range(16)},
+                                     leave_after)
+        device = type("Device", (), {"vid": 0x072F, "pid": 0x2200, "describe": lambda self: "ACR122U"})()
+        reader = ccid.CcidReader(device, lambda u: decoders.mifare_keysets(u, {}))
+        reader.handle = object()
+        reader.slots = [slot]
+        reader._buzzer = slot
+        return reader, slot
+
+    def test_beeps_once_after_a_full_read(self):
+        reader, slot = self.reader()
+        tag = reader.poll()
+        self.assertEqual(len(tag.sectors_read), 16)
+        self.assertFalse(tag.incomplete)
+        self.assertEqual(slot.escapes, [ccid.ACR122U_BEEP_DONE])
+        self.assertIsNone(reader.poll())    # still the same card
+
+    def test_tag_leaving_mid_read(self):
+        reader, slot = self.reader(leave_after=3)
+        tag = reader.poll()
+        self.assertTrue(tag.incomplete)
+        self.assertEqual(slot.escapes, [ccid.ACR122U_BEEP_TOO_SOON])
+        # Put back on the reader, the tag is read again.
+        slot.gone, slot.leave_after = False, None
+        tag = reader.poll()
+        self.assertEqual(len(tag.sectors_read), 16)
+        self.assertFalse(tag.incomplete)
 
 
 class FakePort(object):

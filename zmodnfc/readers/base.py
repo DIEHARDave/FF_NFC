@@ -121,6 +121,11 @@ class Reader(object):
     def describe(self):
         return self.name
 
+    def signal(self, complete):
+        """Tell whoever holds the tag that reading is over (complete) or
+        that the tag left too soon. Readers with a buzzer beep."""
+        pass
+
     # Shared tag reading, for drivers ------------------------------------
 
     def read_card(self, session):
@@ -233,11 +238,14 @@ def read_mifare_classic(session, keysets, reader_name=""):
                 card_gone = True
                 break
         if card_gone:
+            tag.incomplete = True
             break
         if opened is None:
             continue
+        # The sector trailer holds only keys and access bits; skipping it
+        # saves a quarter of the reads while the tag has to stay put.
         data = bytearray()
-        for block in range(first_block, first_block + count):
+        for block in range(first_block, first_block + count - 1):
             chunk = session.mifare_read(block)
             if chunk is None or len(chunk) < MIFARE_BLOCK:
                 data = None
@@ -245,6 +253,7 @@ def read_mifare_classic(session, keysets, reader_name=""):
             data += chunk[:MIFARE_BLOCK]
         if data is None:
             if not session.reselect():
+                tag.incomplete = True
                 break
             continue
         start = first_block * MIFARE_BLOCK
@@ -253,7 +262,10 @@ def read_mifare_classic(session, keysets, reader_name=""):
         tag.sector_keys[sector] = opened.name
     tag.memory = bytes(memory)
     LOGGER.debug("zmod_nfc: MIFARE Classic sectors read: %s", sorted(tag.sector_keys.items()))
-    if not tag.sectors_read:
+    if tag.incomplete:
+        LOGGER.info("zmod_nfc: tag %s left the reader after %d sectors",
+                    tag.uid_hex, len(tag.sectors_read))
+    elif not tag.sectors_read:
         detail = session.describe_failure() if hasattr(session, "describe_failure") else ""
         LOGGER.info("zmod_nfc: no MIFARE Classic sector opened with %s (%s)",
                     ", ".join(k.name for k in keysets) or "the default keys", detail)

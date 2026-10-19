@@ -226,7 +226,7 @@ class Pn532Reader(Reader):
             return None
         tag = self.read_card(Pn532Session(self, target))
         self._release()
-        if tag is not None:
+        if tag is not None and not tag.incomplete:
             self._present = target["uid"]
         return tag
 

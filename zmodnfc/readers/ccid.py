@@ -23,6 +23,7 @@ PC_TO_RDR_ICC_POWER_ON = 0x62
 PC_TO_RDR_ICC_POWER_OFF = 0x63
 PC_TO_RDR_GET_SLOT_STATUS = 0x65
 PC_TO_RDR_XFR_BLOCK = 0x6F
+PC_TO_RDR_ESCAPE = 0x6B
 RDR_TO_PC_DATA_BLOCK = 0x80
 RDR_TO_PC_SLOT_STATUS = 0x81
 
@@ -43,6 +44,18 @@ PCSC_CARD_SAK = {
 }
 
 REMOVAL_MISSES = 2
+
+# ACR122U: it beeps when it detects a card, long before a MIFARE Classic tag
+# is read, so its detection beep is turned off and it beeps once a read is
+# over instead. Pseudo-APDUs from the ACR122U API, sent as CCID escapes so
+# they work with no card on the reader.
+ACR122U = (0x072F, 0x2200)
+ACR122U_DETECTION_BEEP_OFF = b"\xff\x00\x52\x00\x00"
+ACR122U_DETECTION_BEEP_ON = b"\xff\x00\x52\xff\x00"
+# LED/buzzer control FF 00 40 <LED> 04 <T1> <T2> <repeats> <buzzer>: blink
+# green and beep once (100 ms), or blink red and beep three times.
+ACR122U_BEEP_DONE = b"\xff\x00\x40\xa0\x04\x01\x01\x01\x01"
+ACR122U_BEEP_TOO_SOON = b"\xff\x00\x40\x50\x04\x01\x01\x03\x01"
 
 
 class CcidError(ReaderError):
@@ -122,6 +135,14 @@ class CcidSlot(object):
 
     def apdu(self, command):
         msg, status, error, data = self.transact(PC_TO_RDR_XFR_BLOCK, bytes(command))
+        if status >> 6 != 0:
+            return None
+        return data
+
+    def escape(self, command):
+        """A reader command (not for the card) as a CCID escape; the reply,
+        or None when the reader refuses it."""
+        msg, status, error, data = self.transact(PC_TO_RDR_ESCAPE, bytes(command))
         if status >> 6 != 0:
             return None
         return data
@@ -305,6 +326,7 @@ class CcidReader(Reader):
         self.name = "CCID %s" % device.describe()
         self._present = {}
         self._misses = {}
+        self._buzzer = None
 
     def open(self):
         self.handle = usbfs.UsbHandle(self.device)
@@ -326,12 +348,32 @@ class CcidReader(Reader):
         except (usbfs.UsbError, CcidError) as exc:
             self.close()
             raise CcidError("%s: %s" % (self.device.describe(), exc))
+        if (self.device.vid, self.device.pid) == ACR122U:
+            if self.slots[0].escape(ACR122U_DETECTION_BEEP_OFF) is not None:
+                self._buzzer = self.slots[0]
+            else:
+                LOGGER.info("zmod_nfc: %s refused the buzzer setting; it beeps on detection",
+                            self.device.describe())
 
     def close(self):
         if self.handle is not None:
+            if self._buzzer is not None:
+                try:
+                    self._buzzer.escape(ACR122U_DETECTION_BEEP_ON)
+                except CcidError:
+                    pass
             self.handle.close()
         self.handle = None
         self.slots = []
+        self._buzzer = None
+
+    def signal(self, complete):
+        if self._buzzer is None:
+            return
+        try:
+            self._buzzer.escape(ACR122U_BEEP_DONE if complete else ACR122U_BEEP_TOO_SOON)
+        except CcidError as exc:
+            LOGGER.debug("zmod_nfc: ACR122U beep: %s", exc)
 
     def poll(self):
         if self.handle is None:
@@ -363,7 +405,9 @@ class CcidReader(Reader):
             tag = self.read_card(session)
             slot.power_off()
             if tag is not None:
-                self._present[key] = True
+                self.signal(not tag.incomplete)
+                # A tag that left mid-read is read again when it comes back.
+                self._present[key] = not tag.incomplete
                 return tag
         return None
 

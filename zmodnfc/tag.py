@@ -36,7 +36,8 @@ class Tag(object):
       type5           blocks 0..n (block size in block_size)
       mifare_classic  every block of every sector; sectors that could not be
                       authenticated are zero-filled and missing from
-                      sectors_read
+                      sectors_read, and sector trailers (keys and access
+                      bits, no data) are not read and stay zero
       type4           empty; the NDEF file is in ndef
     """
 
@@ -57,6 +58,8 @@ class Tag(object):
         # name of the key set that opened it ("Bambu", "default", ...).
         self.sectors_read = set()
         self.sector_keys = {}
+        # True when the tag left the reader before it was fully read.
+        self.incomplete = False
 
     @property
     def uid_hex(self):
