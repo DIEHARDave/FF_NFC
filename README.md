@@ -149,6 +149,12 @@ active spool follows whichever lane is loaded. Without zmod_afclite, zmod_nfc
 writes the color and material itself, saves the spool ID per slot in
 `save_variables`, and sets the active spool when the slot is the one loaded.
 
+Two Snapmaker spools assigned from their tags to IFS lanes E2 and E3, in
+zmod_afclite's AFC panel in Mainsail. Hovering over a lane's spool shows its
+Spoolman details:
+
+![AFC panel with four IFS lanes; lanes E2 and E3 hold Snapmaker PLA SnapSpeed spools, with a tooltip showing Spoolman spool 14](docs/images/afclite-lanes.png)
+
 Without Spoolman, only the tag's material and color are used.
 
 ## Commands
