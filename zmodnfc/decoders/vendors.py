@@ -6,10 +6,10 @@ GPL-3.0), which builds on the Bambu Research Group RFID guide, DnG-Crafts
 ACE-RFID and the TigerTag project. Ported to Python 3.8 and to the pure
 Python crypto in crypto.py.
 
-Bambu and Creality tags need the vendor's key, which is not distributed
-with this plugin; each is enabled by setting its key in the [zmod_nfc]
-config section. Snapmaker's key derivation salt is published (DnG-Crafts
-U1-RFID "U1 Tag Protocol"), so Snapmaker tags work without configuration."""
+The Bambu, Creality and Snapmaker keys are built in, from their public
+write-ups (Bambu Research Group RFID guide, the Creality CFS RFID research,
+DnG-Crafts U1-RFID). Each matches the SHA-256 below; the [zmod_nfc] options
+can override them."""
 
 import datetime
 import json
@@ -45,10 +45,13 @@ def _weight_from_length(meters, table):
 
 # --- Bambu Lab -------------------------------------------------------------
 
+BAMBU_DEFAULT_KEY = bytes.fromhex("9a759cf2c4f7caff222cb9769b41bc96")
+CREALITY_DEFAULT_KEY = b"q3bu^t1nqfZ(pf$1"
+CREALITY_DEFAULT_AES_KEY = b"H@CFkRnz@KAtBJp2"
+
+
 def bambu_keysets(uid, settings):
-    key = settings.get("bambu_key")
-    if not key:
-        return []
+    key = settings.get("bambu_key") or BAMBU_DEFAULT_KEY
     okm = hkdf_sha256(uid[:4], key, b"RFID-A\x00", 6 * 16)
     return [KeySet("Bambu", [okm[i * 6:(i + 1) * 6] for i in range(16)])]
 
@@ -118,8 +121,8 @@ CREALITY_MATERIALS = {
 
 
 def creality_keysets(uid, settings):
-    key = settings.get("creality_key")
-    if not key or len(uid) < 4:
+    key = settings.get("creality_key") or CREALITY_DEFAULT_KEY
+    if len(uid) < 4:
         return []
     derived = aes128_ecb(key, uid[:4] * 4)[:6]
     keys_a = [FACTORY_KEY] * 16
@@ -133,9 +136,7 @@ def decode_creality(tag, records, settings):
     data = tag.memory[64:112]
     plain = data[3] == 0x32 and data[17] in (0x30, 0x23)
     if not plain:
-        aes_key = settings.get("creality_aes_key")
-        if not aes_key:
-            return None
+        aes_key = settings.get("creality_aes_key") or CREALITY_DEFAULT_AES_KEY
         data = aes128_ecb(aes_key, data, decrypt=True)
     text = data.decode("ascii", "ignore")
     try:

@@ -46,8 +46,8 @@ MIPS CPU is impractical.
 | [OpenSpool](https://openspool.io) | NTAG21x | all | JSON NDEF record. |
 | [OpenTag3D](https://opentag3d.info) | NTAG21x / ISO 15693 | all | Spec 2.x, and the older 0.012 layout. |
 | [TigerTag](https://tigertag.io) | NTAG21x | all | Offline ID database. |
-| Bambu Lab | MIFARE Classic 1K | ACR1552U, PN532, PN5180 | Needs `bambu_key`. |
-| Creality (CFS) | MIFARE Classic 1K | ACR1552U, PN532, PN5180 | Needs `creality_key`; encrypted tags also need `creality_encryption_key`. |
+| Bambu Lab | MIFARE Classic 1K | ACR1552U, PN532, PN5180 | Works out of the box. |
+| Creality (CFS) | MIFARE Classic 1K | ACR1552U, PN532, PN5180 | Works out of the box, encrypted tags included. |
 | Snapmaker (U1) | MIFARE Classic 1K | ACR1552U, PN532, PN5180 | Works out of the box: the key derivation is [published](https://github.com/DnG-Crafts/U1-RFID/blob/main/docs/U1%20Tag%20Protocol.md). The tag's RSA signature is not checked, so re-written tags read too. |
 | Anycubic (ACE) | NTAG21x | all | |
 | Elegoo | NTAG21x | all | |
@@ -58,10 +58,14 @@ MIPS CPU is impractical.
 | NDEF on MIFARE Classic, Type 4 (DESFire) | | ACR1552U, PN532 | All of the NDEF formats above. |
 | Any other tag | | all | Its UID is still matched against Spoolman spools. |
 
-**Vendor keys** (Bambu, Creality) are not distributed with this
-plugin. If you have them, add them to your config. Each key is checked
-against its known SHA-256 at startup, so a typo shows up as a config error
-instead of tags that silently fail to read.
+**Vendor keys:** the Bambu, Creality and Snapmaker keys are built in, from
+their public write-ups (the
+[Bambu Research Group RFID guide](https://github.com/Bambu-Research-Group/RFID-Tag-Guide),
+the Creality CFS RFID research and the
+[DnG-Crafts U1 Tag Protocol](https://github.com/DnG-Crafts/U1-RFID/blob/main/docs/U1%20Tag%20Protocol.md)),
+so these tags read without any setup. The `bambu_key`, `creality_key`,
+`creality_encryption_key` and `snapmaker_key` options can override them; an
+override is checked against the key's known SHA-256 at startup.
 
 ## Install
 
@@ -91,7 +95,6 @@ Plugin updates replace that file, so put your settings in `mod_data/user.cfg`:
 [zmod_nfc]
 prompt_timeout: 90
 spoolman_auto_create: True
-# bambu_key: 0123...
 ```
 
 Klipper merges both `[zmod_nfc]` sections, and yours wins.

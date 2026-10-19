@@ -225,10 +225,20 @@ class VendorTest(unittest.TestCase):
                           filament.weight, filament.manufactured),
                          ("Creality", "PLA", ["Hyper"], "FF8800", 1000, "2024-08-15"))
 
-    def test_creality_needs_aes_key_when_encrypted(self):
-        tag = self._mfc(b"\x99" * 48, "Creality")
-        filament, _ = decoders.decode(tag)
-        self.assertIsNone(filament)
+    def test_creality_encrypted_with_built_in_key(self):
+        text = b"AB1" + b"24" + b"8" + b"15" + b"0276" + b"06002" + b"0123456" + b"0165" \
+            + b"000002" + b"0" * 14
+        cipher = crypto.aes128_ecb(vendors.CREALITY_DEFAULT_AES_KEY, text)
+        filament, _ = decoders.decode(self._mfc(cipher, "Creality"))
+        self.assertEqual((filament.material, filament.color, filament.weight),
+                         ("PETG", "123456", 500))
+
+    def test_built_in_keys_match_published_hashes(self):
+        for key, digest in ((vendors.BAMBU_DEFAULT_KEY, vendors.BAMBU_KEY_SHA256),
+                            (vendors.CREALITY_DEFAULT_KEY, vendors.CREALITY_KEY_SHA256),
+                            (vendors.CREALITY_DEFAULT_AES_KEY, vendors.CREALITY_AES_KEY_SHA256),
+                            (vendors.SNAPMAKER_DEFAULT_KEY, vendors.SNAPMAKER_KEY_SHA256)):
+            self.assertTrue(crypto.key_matches(key, digest), key)
 
     def test_bambu(self):
         memory = bytearray(1024)
@@ -257,7 +267,8 @@ class VendorTest(unittest.TestCase):
     def test_snapmaker_default_key_matches_published_hash(self):
         self.assertTrue(crypto.key_matches(vendors.SNAPMAKER_DEFAULT_KEY,
                                            vendors.SNAPMAKER_KEY_SHA256))
-        keyset = decoders.mifare_keysets(b"\xaa\xbb\xcc\xdd", {})[0]
+        keyset = [k for k in decoders.mifare_keysets(b"\xaa\xbb\xcc\xdd", {})
+                  if k.name == "Snapmaker"][0]
         # Key A comes from the 25-byte salt A, key B from the full salt B.
         self.assertEqual(keyset.keys_a[0], crypto.hkdf_sha256(
             b"\xaa\xbb\xcc\xdd", b"Snapmaker_qwertyuiop[,.;]", b"key_a_0", 6))
@@ -265,9 +276,9 @@ class VendorTest(unittest.TestCase):
             b"\xaa\xbb\xcc\xdd", b"Snapmaker_qwertyuiop[,.;]_1q2w3e", b"key_b_15", 6))
 
     def test_keysets(self):
-        # Snapmaker's published key is built in; the others need config.
+        # The published vendor keys are built in.
         self.assertEqual([k.name for k in decoders.mifare_keysets(b"\x01\x02\x03\x04", {})],
-                         ["Snapmaker"])
+                         ["Bambu", "Snapmaker", "Creality"])
         keysets = decoders.mifare_keysets(b"\x01\x02\x03\x04", {
             "bambu_key": b"\x11" * 16, "creality_key": b"\x22" * 16,
             "snapmaker_key": b"\x33" * 32, "extra_mifare_keys": [b"\x44" * 6]})
