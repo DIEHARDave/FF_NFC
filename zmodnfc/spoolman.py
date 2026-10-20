@@ -128,6 +128,23 @@ class Spoolman(object):
                 return spool
         return None
 
+    def find_spools_by_filament(self, filament):
+        """Spools whose filament has the tag's vendor, material and colour:
+        how a spool's second tag (Snapmaker spools have one on each side)
+        or a tag never bound to its spool is still found."""
+        if not (filament.brand and filament.material and filament.color):
+            return []
+        brand = filament.brand.lower()
+        material = filament.material.upper()
+        color = filament.color.replace("#", "").upper()[:6]
+        found = []
+        for spool in self.request("GET", "/v1/spool", {"allow_archived": "false"}) or []:
+            spool_filament = spool.get("filament") or {}
+            vendor = str((spool_filament.get("vendor") or {}).get("name") or "").lower()
+            if vendor == brand and str(spool_filament.get("material") or "").upper() == material                     and spool_color(spool) == color:
+                found.append(spool)
+        return found
+
     def ensure_card_field(self):
         fields = self.request("GET", "/v1/field/spool") or []
         if not any(f.get("key") == CARD_UIDS_FIELD for f in fields):

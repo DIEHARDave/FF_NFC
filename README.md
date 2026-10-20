@@ -138,7 +138,8 @@ The same spool after adding it, now matched to Spoolman spool 15:
    prompt timeout. Inserting also works on screens that cannot show prompts,
    such as the stock Flashforge screen.
 3. The slot gets the material and color. On the Creator 5, the color is
-   snapped to the closest color in its palette.
+   snapped to the closest color in its palette for Zmod's screen; lane_data
+   (OrcaSlicer, HelixScreen) keeps the tag's exact color.
 
 Zmod normally asks for the color and material after you insert filament
 (after the AD5X IFS loads it, or when a Creator 5 head sensor sees it). For a
@@ -158,6 +159,11 @@ When Moonraker has a `[spoolman]` section:
 * Otherwise the tag's UID is looked up in the spools' `card_uids` field (the
   same field [zmod_afclite](https://github.com/DIEHARDave/zmod_afclite) uses)
   or nfc2klipper's `nfc_id` field.
+* Then, with `spoolman_match_filament: True` (the default), a tag with
+  filament data matches the spool whose filament has the tag's vendor,
+  material and exact colour - if there is only one. This finds a Snapmaker
+  spool by its second tag, or a spool added by hand; the tag's UID is then
+  recorded on it (see `bind_card_uid`).
 * An unknown tag that carries filament data can be added with the prompt's
   **Add to Spoolman** button, or automatically with
   `spoolman_auto_create: True`.

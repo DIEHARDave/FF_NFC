@@ -303,6 +303,40 @@ class PluginTest(unittest.TestCase):
         self.assertEqual(looked_up, [])          # implausible ID not even tried
         self.assertEqual(scan.spool["id"], 12)
 
+    def _spoolman_by_filament(self, spools):
+        plugin, gcode, objects = make_plugin()
+        objects["webhooks"]._remote_methods["spoolman_set_active_spool"] = True
+
+        class FakeSpoolman(object):
+            def find_spool_by_uid(self, uid):
+                return None
+
+            def request(self, method, path, query=None, body=None):
+                return spools
+
+        fake = FakeSpoolman()
+        from zmodnfc.spoolman import Spoolman
+        fake.find_spools_by_filament = lambda f: Spoolman.find_spools_by_filament(fake, f)
+        plugin.spoolman = fake
+        payload = b'{"protocol":"openspool","brand":"Snapmaker","type":"PLA","color_hex":"6600CC"}'
+        from helpers import mime_record
+        return plugin._process(type2_tag(mime_record("application/json", payload)))
+
+    def test_unbound_tag_matches_spool_by_filament(self):
+        violet = {"id": 19, "extra": {}, "filament": {
+            "vendor": {"name": "Snapmaker"}, "material": "PLA", "color_hex": "6600cc"}}
+        red = {"id": 6, "extra": {}, "filament": {
+            "vendor": {"name": "Snapmaker"}, "material": "PLA", "color_hex": "E36868"}}
+        scan = self._spoolman_by_filament([red, violet])
+        self.assertEqual(scan.spool["id"], 19)
+
+    def test_several_filament_matches_are_not_guessed(self):
+        spool = lambda n: {"id": n, "extra": {}, "filament": {
+            "vendor": {"name": "Snapmaker"}, "material": "PLA", "color_hex": "6600CC"}}
+        scan = self._spoolman_by_filament([spool(19), spool(30)])
+        self.assertIsNone(scan.spool)
+        self.assertIn("2 spools match", scan.spoolman_note)
+
     def _with_zmod_popup(self):
         plugin, gcode, objects = make_plugin()
         popups = []

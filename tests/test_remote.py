@@ -183,6 +183,28 @@ class LaneDataTest(unittest.TestCase):
         self.assertEqual(value["vendor_name"], "Bambu Lab")
         self.assertEqual(existing["spool_id"], 9)    # input untouched
 
+    def test_new_spool_drops_old_spool_details(self):
+        existing = {"lane": "1", "color": "#48358C", "spool_name": "Gold", "name": "Gold",
+                    "color_name": "Medium Soft Green", "helix_material": "PLA",
+                    "helix_spoolman_filament_id": 39, "spoolman_vendor_id": 2,
+                    "zmod_afclite": True, "zmod_nfc_uid": "80FDF63E"}
+        value = lane_data.lane_value(existing, 2, {
+            "material": "PLA", "color": "6600CC", "spool_id": 19, "uid": "9065F63E",
+            "name": "Snapmaker PLA Matte Violet Purple", "vendor": "Snapmaker"})
+        for key in ("spool_name", "color_name", "helix_material", "helix_spoolman_filament_id",
+                    "spoolman_vendor_id"):
+            self.assertNotIn(key, value)
+        self.assertEqual(value["name"], "Snapmaker PLA Matte Violet Purple")
+        self.assertEqual(value["color"], "#6600CC")
+        self.assertTrue(value["zmod_afclite"])
+
+    def test_same_spool_keeps_other_writers_details(self):
+        existing = {"lane": "0", "spool_id": 19, "spool_name": "Violet", "helix_material": "PLA"}
+        value = lane_data.lane_value(existing, 1, {
+            "material": "PLA", "color": "6600CC", "spool_id": 19, "uid": "9065F63E", "name": "x"})
+        self.assertEqual(value["spool_name"], "Violet")
+        self.assertEqual(value["helix_material"], "PLA")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -33,11 +33,31 @@ def entry_key(entries, slot):
     return "lane%d" % slot
 
 
+# Keys other writers (HelixScreen) keep about the spool in a slot. They
+# describe the previous spool once a different one is assigned; HelixScreen
+# prefers its own (spool_name, helix_material) over the shared ones.
+SPOOL_KEYS = ("name", "spool_name", "color_name", "spoolman_vendor_id", "scan_time",
+              "remaining_weight_g", "total_weight_g")
+
+
+def same_spool(existing, info):
+    if existing.get("spool_id") and info.get("spool_id"):
+        return existing["spool_id"] == info["spool_id"]
+    return bool(info.get("uid")) and existing.get("zmod_nfc_uid") == info["uid"]
+
+
 def lane_value(existing, slot, info):
     """The new entry: existing keys kept, the spool's details set. info has
     material, color (RRGGBB), and optionally spool_id, vendor, name,
-    nozzle_temp, bed_temp, uid."""
+    nozzle_temp, bed_temp, uid. For a different spool than before, other
+    writers' details about the old one are dropped."""
     value = dict(existing) if isinstance(existing, dict) else {}
+    if not same_spool(value, info):
+        for key in list(value):
+            if key in SPOOL_KEYS or key.startswith("helix_"):
+                del value[key]
+        if info.get("name"):
+            value["name"] = info["name"]
     value["lane"] = str(slot - 1)
     if info.get("material"):
         value["material"] = info["material"]

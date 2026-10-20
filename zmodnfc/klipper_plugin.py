@@ -173,6 +173,7 @@ class ZmodNfc(object):
         self.use_spoolman = config.getboolean("spoolman", True)
         self.auto_create = config.getboolean("spoolman_auto_create", False)
         self.bind_card_uid = config.getboolean("bind_card_uid", True)
+        self.match_filament = config.getboolean("spoolman_match_filament", True)
         self.skip_zmod_prompt = config.getboolean("skip_zmod_color_prompt", True)
         self.skip_window = config.getfloat("skip_zmod_color_window", 300., minval=0.)
         self.disabled_formats = [f.strip() for f in config.get("disabled_formats", "").split(",")
@@ -400,6 +401,16 @@ class ZmodNfc(object):
             # QR codes have no UID to look up.
             if scan.spool is None and tag.uid:
                 scan.spool = self.spoolman.find_spool_by_uid(tag.uid_hex)
+            if scan.spool is None and self.match_filament and filament is not None:
+                # Only a single match is taken; bind_card_uid then records
+                # this tag on it, so the next scan finds it by UID.
+                matches = self.spoolman.find_spools_by_filament(filament)
+                if len(matches) == 1:
+                    scan.spool = matches[0]
+                elif matches:
+                    scan.spoolman_note = "%d spools match (%s); pick it in Spoolman" % (
+                        len(matches), ", ".join(str(s["id"]) for s in matches))
+                    return scan
             if scan.spool is None and self.auto_create and filament is not None \
                     and filament.material:
                 scan.spool = self.spoolman.create_spool(filament, tag.uid_hex)
@@ -649,14 +660,16 @@ class ZmodNfc(object):
             respond("NFC: %r is not a material this printer knows; %s keeps %s"
                     % (scan.material(), label, material or "its material"))
         color = normalize_color(scan.color()) or current["color"] or "FFFFFF"
+        # Zmod only stores its palette colours; lane_data (OrcaSlicer,
+        # HelixScreen) gets the spool's own colour.
+        zmod_color = color
         if slots["palette"] and color not in slots["palette"]:
-            snapped = nearest_palette_color(color, slots["palette"])
-            respond("NFC: #%s is stored as the closest palette color #%s" % (color, snapped))
-            color = snapped
+            zmod_color = nearest_palette_color(color, slots["palette"])
+            respond("NFC: #%s is stored as the closest palette color #%s" % (color, zmod_color))
         if self.zmod_color is not None and material:
             # SILENT=1 keeps Zmod from opening its colour picker.
             run_gcode("CHANGE_ZCOLOR SLOT=%d HEX=%s TYPE=%s SILENT=1"
-                            % (slot_number, color, material))
+                            % (slot_number, zmod_color, material))
         self._write_lane_data(scan, slot_number, material, color)
         if spool is not None:
             if self.printer.lookup_object("save_variables", None) is not None:
@@ -668,7 +681,7 @@ class ZmodNfc(object):
                 self._in_background(self.spoolman.bind_uid, spool, scan.uid)
             respond("NFC: %s is now %s (Spoolman spool %d)" % (label, scan.title(), spool["id"]))
         else:
-            respond("NFC: %s is now %s #%s" % (label, material or "?", color))
+            respond("NFC: %s is now %s #%s" % (label, material or "?", zmod_color))
 
     def _write_lane_data(self, scan, slot_number, material, color):
         if self.lane_data is None:
