@@ -194,7 +194,9 @@ tag read** (UID, memory dump, which MIFARE keys opened which sector) to
 zmod_nfc, which treats it exactly like a tag on a USB reader: every format
 is decoded here, the spool is looked up in Spoolman, the slot prompt appears
 on the printer's screen, inserting filament picks the slot, and lane data is
-filled in. The ESP32's web page can also pick the slot.
+filled in. The ESP32's web page can also pick the slot, or a reader can be
+fixed to one slot (one reader per IFS slot or toolhead): its scans then go
+straight into that slot, without the prompt.
 
 Readers talk to zmod_nfc **through Moonraker** (port 7125): zmod_nfc
 registers Klipper endpoints (`zmod_nfc/scan`, ...) that Moonraker publishes

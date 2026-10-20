@@ -53,6 +53,7 @@ One tag read:
 | `block_size` | Type 5 block size (default 4). |
 | `sak`, `atqa` | Optional, from anticollision. |
 | `incomplete` | The tag left the reader before it was fully read; nothing is done. |
+| `slot` | Optional. A reader fixed to one slot (one reader per IFS slot or toolhead) names it here: the spool is assigned to that slot straight away, without the prompt. `0` or missing: prompt as usual. |
 
 Klipper endpoints must answer at once, and decoding plus the Spoolman
 lookup take longer, so the scan is accepted and processed in the
@@ -72,12 +73,15 @@ The outcome then appears in the `zmod_nfc` printer object. Poll
   "outcome": "prompt",
   "scan": {"uid": "...", "format": "Bambu", "title": "Bambu Lab PLA Matte",
            "material": "PLA", "color": "000000", "spool_id": 12, "filament": {}},
-  "spoolman": ""
+  "spoolman": "",
+  "slot": null,
+  "message": ""
 }}}}}
 ```
 
-`outcome` is `prompt` (the slot prompt is open), `assigned` (single-slot
-printer), `disabled` (`NFC_DISABLE`), `printing` (scans are ignored while
+`outcome` is `prompt` (the slot prompt is open), `assigned` (the request
+named a `slot`, or the printer has a single slot; `message` says what was
+set), `no_slot` (the printer has no such slot), `disabled` (`NFC_DISABLE`), `printing` (scans are ignored while
 printing unless `scan_while_printing`), `no_data`, or `error` (with
 `error`). `spoolman` explains a missing spool ("not in Spoolman", ...). An
 `incomplete` read is answered at once with

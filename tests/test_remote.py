@@ -114,6 +114,26 @@ class EndpointTest(unittest.TestCase):
         with self.assertRaises(CommandError):
             self.call("assign", slot=3)
 
+    def test_reader_fixed_to_a_slot_skips_the_prompt(self):
+        result = self.scan(type2_tag(text_record("PETG:00FF00")), slot=2)
+        self.assertEqual(result["outcome"], "assigned")
+        self.assertEqual(result["slot"], 2)
+        self.assertIn("Slot 2 is now PETG", result["message"])
+        self.assertEqual(self.gcode.scripts, ["CHANGE_ZCOLOR SLOT=2 HEX=00FF00 TYPE=PETG SILENT=1"])
+        self.assertFalse([r for r in self.gcode.raw if "prompt_begin" in r])
+        self.assertIsNone(self.plugin.pending)
+        # Zmod's colour popup after inserting into that slot is skipped.
+        self.assertIn(2, self.plugin._assigned)
+
+    def test_fixed_slot_errors(self):
+        tag = type2_tag(text_record("PLA:FF0000"))
+        self.assertEqual(self.scan(tag, slot=9)["outcome"], "no_slot")
+        self.assertEqual(self.gcode.scripts, [])
+        with self.assertRaises(CommandError):
+            self.call("scan", **scan_request(tag, slot="two"))
+        # slot 0 means "ask", as when the field is missing.
+        self.assertEqual(self.scan(tag, slot=0)["outcome"], "prompt")
+
     def test_openspool_json_is_decoded_on_the_printer(self):
         payload = json.dumps({"protocol": "openspool", "version": "1.0", "type": "PLA",
                               "color_hex": "FFAA00", "brand": "Sunlu",

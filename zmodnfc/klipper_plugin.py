@@ -432,11 +432,13 @@ class ZmodNfc(object):
         state = stats.get_status(self.reactor.monotonic()).get("state")
         return state in ("printing", "paused")
 
-    def _handle_scan(self, scan, run_gcode=None):
-        """Show the prompt for a scan. run_gcode is given when called from a
-        G-code command (NFC_TEST_SCAN), where run_script would deadlock.
-        Returns what happened: "prompt", "assigned", "disabled", "printing"
-        or "no_data"."""
+    def _handle_scan(self, scan, run_gcode=None, slot=None, messages=None):
+        """Show the prompt for a scan, or assign it to slot straight away
+        when the reader names one (a reader fixed to a slot). run_gcode is
+        given when called from a G-code command (NFC_TEST_SCAN), where
+        run_script would deadlock. Returns what happened: "prompt",
+        "assigned", "disabled", "printing", "no_data", "no_slot" or
+        "error"; messages collects what a direct assignment reported."""
         self.last = scan
         if not self.enabled:
             return "disabled"
@@ -449,6 +451,8 @@ class ZmodNfc(object):
                 % (scan.source(), (" (Spoolman: %s)" % scan.spoolman_note) if scan.spoolman_note else ""))
             return "no_data"
         slots = self._slots()
+        if slot is not None:
+            return self._assign_direct(scan, slot, slots, run_gcode, messages)
         if len(slots["slots"]) <= 1:
             self._assign_outside_command(scan, 1, run_gcode)
             return "assigned"
@@ -582,6 +586,26 @@ class ZmodNfc(object):
         return eventtime + INSERT_POLL
 
     # Assignment -----------------------------------------------------------
+
+    def _assign_direct(self, scan, slot_number, slots, run_gcode=None, messages=None):
+        """Assign without a prompt, for a reader fixed to one slot."""
+        messages = messages if messages is not None else []
+
+        def respond(message):
+            messages.append(message)
+            self.gcode.respond_info(message)
+
+        if slot_number not in slots["slots"]:
+            respond("NFC: %s is for %s %d, which this printer does not have"
+                    % (scan.source(), "toolhead" if slots["toolchanger"] else "slot",
+                       slot_number))
+            return "no_slot"
+        try:
+            self._assign(scan, slot_number, respond, run_gcode or self.gcode.run_script)
+        except Exception as exc:
+            respond("NFC: %s" % exc)
+            return "error"
+        return "assigned"
 
     def _assign_outside_command(self, scan, slot_number, run_gcode=None):
         """Assign from a reactor callback rather than a G-code command."""
@@ -963,6 +987,10 @@ class ZmodNfc(object):
             tag = tag_from_json(web_request.params)
         except RemoteError as exc:
             raise self.printer.command_error("NFC: %s" % exc)
+        # A reader fixed to a slot names it; the scan then skips the prompt.
+        slot = web_request.params.get("slot") or None
+        if slot is not None and (not isinstance(slot, int) or slot < 1):
+            raise self.printer.command_error("NFC: slot must be a slot number")
         if tag.incomplete:
             return {"accepted": False, "outcome": "incomplete"}
         scan_id = os.urandom(4).hex()
@@ -975,16 +1003,18 @@ class ZmodNfc(object):
                 LOGGER.exception("zmod_nfc: network scan failed")
                 self._post(self._remote_failed, scan_id, str(exc))
                 return
-            self._post(self._remote_done, scan_id, scan)
+            self._post(self._remote_done, scan_id, scan, slot)
         thread = threading.Thread(target=run, name="zmod_nfc network scan")
         thread.daemon = True
         thread.start()
         return {"accepted": True, "id": scan_id}
 
-    def _remote_done(self, scan_id, scan):
-        outcome = self._handle_scan(scan)
+    def _remote_done(self, scan_id, scan, slot=None):
+        messages = []
+        outcome = self._handle_scan(scan, slot=slot, messages=messages)
         self.remote_result = {"id": scan_id, "outcome": outcome, "scan": scan.summary(),
-                              "spoolman": scan.spoolman_note}
+                              "spoolman": scan.spoolman_note, "slot": slot,
+                              "message": " ".join(messages)}
 
     def _remote_failed(self, scan_id, error):
         self.remote_result = {"id": scan_id, "outcome": "error", "error": error}
