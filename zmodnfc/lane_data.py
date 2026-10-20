@@ -38,8 +38,11 @@ def entry_key(entries, slot):
 # Keys other writers (HelixScreen) keep about the spool in a slot. They
 # describe the previous spool once a different one is assigned; HelixScreen
 # prefers its own (spool_name, helix_material) over the shared ones.
-SPOOL_KEYS = ("name", "spool_name", "color_name", "spoolman_vendor_id", "scan_time",
-              "remaining_weight_g", "total_weight_g")
+# HelixScreen takes an entry holding "vendor", "spool_name" or a helix_ key
+# for its own and ignores it when it re-reads lane_data, so this module
+# writes only the shared spellings (vendor_name, name).
+SPOOL_KEYS = ("name", "spool_name", "vendor", "color_name", "spoolman_vendor_id",
+              "scan_time", "remaining_weight_g", "total_weight_g")
 
 
 def same_spool(existing, info):
@@ -60,6 +63,8 @@ def lane_value(existing, slot, info):
                 del value[key]
         if info.get("name"):
             value["name"] = info["name"]
+    elif "spool_name" not in value and not any(k.startswith("helix_") for k in value):
+        value.pop("vendor", None)     # written by older versions of this module
     value["lane"] = str(slot - 1)
     if info.get("material"):
         value["material"] = info["material"]
@@ -69,13 +74,15 @@ def lane_value(existing, slot, info):
         value["spool_id"] = info["spool_id"]
     else:
         value.pop("spool_id", None)       # the previous spool's
-    for key in ("vendor", "nozzle_temp", "bed_temp"):
+    for key in ("nozzle_temp", "bed_temp"):
         if info.get(key):
             value[key] = info[key]
         else:
             value.pop(key, None)
     if info.get("vendor"):
         value["vendor_name"] = info["vendor"]
+    else:
+        value.pop("vendor_name", None)
     value["zmod_nfc_name"] = info.get("name") or ""
     value["zmod_nfc_uid"] = info.get("uid") or ""
     if info.get("zmod_color"):

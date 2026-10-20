@@ -195,6 +195,10 @@ class LaneDataTest(unittest.TestCase):
                     "spoolman_vendor_id"):
             self.assertNotIn(key, value)
         self.assertEqual(value["name"], "Snapmaker PLA Matte Violet Purple")
+        # HelixScreen's own spellings would make it ignore this entry.
+        for key in ("vendor", "spool_name"):
+            self.assertNotIn(key, value)
+        self.assertEqual(value["vendor_name"], "Snapmaker")
         self.assertEqual(value["color"], "#6600CC")
         self.assertTrue(value["zmod_afclite"])
 
@@ -206,6 +210,13 @@ class LaneDataTest(unittest.TestCase):
         self.assertEqual(value["zmod_afclite_color"], "#48358C")
         self.assertEqual(value["scan_time"], "2026-10-20T23:00:00Z")
         self.assertNotIn("zmod_color", value)
+
+    def test_same_spool_drops_vendor_written_here(self):
+        existing = {"lane": "1", "spool_id": 21, "vendor": "Sunlu", "zmod_nfc_uid": "53"}
+        value = lane_data.lane_value(existing, 2, {
+            "material": "PLA", "color": "E364CD", "spool_id": 21, "uid": "53", "vendor": "Sunlu"})
+        self.assertNotIn("vendor", value)
+        self.assertEqual(value["vendor_name"], "Sunlu")
 
     def test_same_spool_keeps_other_writers_details(self):
         existing = {"lane": "0", "spool_id": 19, "spool_name": "Violet", "helix_material": "PLA"}
