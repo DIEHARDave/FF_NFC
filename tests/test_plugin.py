@@ -129,6 +129,10 @@ class FakeWebhooks(object):
     def __init__(self):
         self._remote_methods = {}
         self.calls = []
+        self.endpoints = {}
+
+    def register_endpoint(self, path, callback):
+        self.endpoints[path] = callback
 
     def call_remote_method(self, method, **kwargs):
         self.calls.append((method, kwargs))
@@ -171,7 +175,9 @@ def make_plugin(options=None, tools=1, palette=None, afclite=False):
     if afclite:
         objects["zmod_afclite"] = object()
     printer = FakePrinter(objects)
-    plugin = klipper_plugin.ZmodNfc(FakeConfig(printer, options or {}))
+    # No lane_data writes to a Moonraker that is not there.
+    options = dict({"lane_data": False}, **(options or {}))
+    plugin = klipper_plugin.ZmodNfc(FakeConfig(printer, options))
     plugin.zmod_color = objects["zmod_color"]
     return plugin, gcode, objects
 

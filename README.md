@@ -44,6 +44,7 @@ QR label ──► camera ──► decode (Spoolman label, OpenSpool, text) ─
 | Other PC/SC readers: ACR1252U, ACR1255U, Identiv, ... | USB (CCID) | depends on the reader | Same driver: any reader with the PC/SC Part 3 storage-card commands. |
 | **PN532** | USB-serial adapter (CH340, CP210x, PL2303, FTDI) | ISO 14443A | Tested with an all-in-one USB-C "PN532 V2.0" board (CH340E, HSU wired in). On other boards, set **HSU/UART** mode (both switches off on the common red and blue boards). Cannot read ISO 15693 (OpenPrintTag). |
 | **PN5180** | USB through a bridge MCU | ISO 14443A + ISO 15693 | The PN5180 has no USB of its own. The driver is written; the bridge firmware is planned. See [docs/pn5180-bridge.md](docs/pn5180-bridge.md). |
+| **[zmod_esp32-nfc](https://github.com/DIEHARDave/zmod_esp32-nfc)** | Wi-Fi (ESP32 + PN532) | ISO 14443A | A reader anywhere on the network, for one or several printers. See [Network readers](#network-readers). |
 
 `reader: auto` (the default) uses the first CCID reader it finds, then probes
 USB-serial adapters for a PN532 or a PN5180 bridge. It never probes serial
@@ -175,6 +176,32 @@ Spoolman details:
 
 Without Spoolman, only the tag's material and color are used.
 
+### Lane data for OrcaSlicer
+
+After an assignment, zmod_nfc adds the spool's details to the slot's entry
+in Moonraker's `lane_data` (which OrcaSlicer reads): material, color,
+Spoolman `spool_id`, vendor and nozzle and bed temperatures. Other keys in
+the entry, such as zmod_afclite's, are kept. The entry is found by its
+`lane` field, so this works with the AD5X's `lane1`..`lane4` and the
+Creator 5's `T0`..`T3` keys alike. Set `lane_data: False` to turn it off.
+
+## Network readers
+
+[zmod_esp32-nfc](https://github.com/DIEHARDave/zmod_esp32-nfc) is an ESP32
+with a PN532 that reads tags over Wi-Fi, so one reader can serve several
+printers and does not need a USB port on the printer. It sends the **whole
+tag read** (UID, memory dump, which MIFARE keys opened which sector) to
+zmod_nfc, which treats it exactly like a tag on a USB reader: every format
+is decoded here, the spool is looked up in Spoolman, the slot prompt appears
+on the printer's screen, inserting filament picks the slot, and lane data is
+filled in. The ESP32's web page can also pick the slot.
+
+Readers talk to zmod_nfc **through Moonraker** (port 7125): zmod_nfc
+registers Klipper endpoints (`zmod_nfc/scan`, ...) that Moonraker publishes
+on its HTTP API. There is no extra port or server on the printer, and
+Moonraker's authorization applies (a reader outside `trusted_clients` needs
+an API key). The protocol is in [docs/remote-api.md](docs/remote-api.md).
+
 ## Spoolman QR labels
 
 [Spoolman](https://github.com/Donkie/Spoolman) prints a QR code label for
@@ -293,8 +320,8 @@ an NFC tag's: the decoders, the Spoolman lookup and the slot prompt.
 | `NFC_QR_CANCEL` | Stop looking for a QR label. |
 | `NFC_ENABLE` / `NFC_DISABLE` | Resume or ignore scans. |
 
-`printer.zmod_nfc` reports `state`, `reader`, `pending`, `qr_scanning` and
-the `last` scan (UID, format, material, color, spool ID) for macros and other
+`printer.zmod_nfc` reports `state`, `reader`, `pending`, `qr_scanning`,
+`remote` (the outcome of the last network reader scan) and the `last` scan (UID, format, material, color, spool ID) for macros and other
 clients. A QR scan has an empty UID.
 
 ## Testing a reader without Klipper

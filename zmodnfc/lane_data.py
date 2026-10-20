@@ -1,0 +1,102 @@
+"""Moonraker lane_data: what OrcaSlicer (and HelixScreen) read per slot.
+
+zmod_afclite mirrors each slot's colour and material into lane_data, but
+not which spool is in it. After a tag assignment zmod_nfc adds the spool's
+details to the slot's entry - Spoolman spool ID, vendor, temperatures -
+keeping every other key, so afclite's and other writers' fields survive.
+
+Entries are found by their "lane" field ("0" for the first slot), because
+the key differs between printers (AD5X: lane1..lane4, Creator 5: T0..T3)."""
+
+import json
+import logging
+import threading
+import urllib.error
+import urllib.parse
+import urllib.request
+
+LOGGER = logging.getLogger("zmod_nfc")
+
+NAMESPACE = "lane_data"
+TIMEOUT = 10.0
+# Written a little after the assignment, once zmod_afclite has mirrored
+# the slot's new colour; afclite then merges into this entry, not over it.
+DELAY = 5.0
+
+
+def entry_key(entries, slot):
+    """Key of the lane_data entry for a 1-based slot."""
+    lane = str(slot - 1)
+    for key, value in sorted(entries.items()):
+        if isinstance(value, dict) and str(value.get("lane")) == lane:
+            return key
+    return "lane%d" % slot
+
+
+def lane_value(existing, slot, info):
+    """The new entry: existing keys kept, the spool's details set. info has
+    material, color (RRGGBB), and optionally spool_id, vendor, name,
+    nozzle_temp, bed_temp, uid."""
+    value = dict(existing) if isinstance(existing, dict) else {}
+    value["lane"] = str(slot - 1)
+    if info.get("material"):
+        value["material"] = info["material"]
+    if info.get("color"):
+        value["color"] = "#" + info["color"].lstrip("#").upper()
+    if info.get("spool_id"):
+        value["spool_id"] = info["spool_id"]
+    else:
+        value.pop("spool_id", None)       # the previous spool's
+    for key in ("vendor", "nozzle_temp", "bed_temp"):
+        if info.get(key):
+            value[key] = info[key]
+        else:
+            value.pop(key, None)
+    if info.get("vendor"):
+        value["vendor_name"] = info["vendor"]
+    value["zmod_nfc_name"] = info.get("name") or ""
+    value["zmod_nfc_uid"] = info.get("uid") or ""
+    return value
+
+
+class LaneData(object):
+    def __init__(self, moonraker_url):
+        self.url = moonraker_url.rstrip("/") + "/server/database/item"
+
+    def _request(self, method, query=None, body=None):
+        url = self.url + ("?" + urllib.parse.urlencode(query) if query else "")
+        data = json.dumps(body).encode() if body is not None else None
+        request = urllib.request.Request(url, data=data, method=method,
+                                         headers={"Content-Type": "application/json"})
+        with urllib.request.urlopen(request, timeout=TIMEOUT) as response:
+            return json.load(response)
+
+    def entries(self):
+        try:
+            reply = self._request("GET", {"namespace": NAMESPACE})
+        except urllib.error.HTTPError as exc:
+            if exc.code == 404:            # the namespace does not exist yet
+                return {}
+            raise
+        return (reply.get("result") or {}).get("value") or {}
+
+    def write(self, slot, info):
+        entries = self.entries()
+        key = entry_key(entries, slot)
+        value = lane_value(entries.get(key), slot, info)
+        if value != entries.get(key):
+            self._request("POST", body={"namespace": NAMESPACE, "key": key, "value": value})
+        return key
+
+    def write_later(self, slot, info, delay=DELAY):
+        """write() on a timer thread; failures are only logged."""
+        def run():
+            try:
+                key = self.write(slot, info)
+                LOGGER.info("zmod_nfc: lane_data %s set for slot %d", key, slot)
+            except (urllib.error.URLError, OSError, ValueError) as exc:
+                LOGGER.warning("zmod_nfc: could not write lane_data for slot %d: %s", slot, exc)
+        timer = threading.Timer(delay, run)
+        timer.daemon = True
+        timer.start()
+        return timer

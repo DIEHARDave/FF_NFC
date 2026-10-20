@@ -12,7 +12,14 @@ prompts.
 
 NFC_QR_SCAN reads a QR label (Spoolman, OpenSpool JSON, text) through the
 printer camera instead. The camera module does that in a child process;
-its text then takes the same path as a tag's."""
+its text then takes the same path as a tag's.
+
+Network readers (zmod_esp32-nfc) send their raw tag reads to webhooks
+endpoints that Moonraker publishes (zmod_nfc/scan, ...; remote.py); those
+take the same path too.
+
+After an assignment the slot's Moonraker lane_data entry gets the spool's
+details (lane_data.py), for OrcaSlicer."""
 
 import json
 import logging
@@ -30,6 +37,8 @@ from .readers.detect import READER_TYPES, open_reader
 from .spoolman import Spoolman, SpoolmanError, normalize_uid, spool_color, spool_title, spool_uids
 from .camera import DECODERS as QR_DECODERS, DEFAULT_CHROOT, DEFAULT_URL, DEFAULT_WIDTH
 from .decoders.ndef import text_message, type2_image
+from .lane_data import LaneData
+from .remote import API_VERSION, RemoteError, tag_from_json
 from .tag import KIND_QR, KIND_TYPE2, TECH_CAMERA, TECH_ISO14443A, Tag, normalize_color
 
 LOGGER = logging.getLogger("zmod_nfc")
@@ -42,6 +51,7 @@ SPOOLMAN_REMOTE_METHOD = "spoolman_set_active_spool"
 SLOTS_PER_IFS = 4
 UNSET_MATERIALS = ("NONE", "N/A", "?", "")
 SPOOL_VARIABLE = "zmod_nfc_slot%d_spool"
+REMOTE_ENDPOINTS = ("scan", "assign", "cancel", "info")
 INSERT_POLL = 1.0
 # Larger "spool IDs" on tags are not Spoolman's (Spoolman counts from 1).
 MAX_SPOOLMAN_ID = 10 ** 7
@@ -148,6 +158,7 @@ class ZmodNfc(object):
         self.printer = config.get_printer()
         self.reactor = self.printer.get_reactor()
         self.gcode = self.printer.lookup_object("gcode")
+        self.webhooks = self.printer.lookup_object("webhooks")
 
         self.reader_type = config.getchoice(
             "reader", {t: t for t in READER_TYPES}, "auto")
@@ -172,7 +183,10 @@ class ZmodNfc(object):
         self.qr_ffmpeg = config.get("qr_ffmpeg", "")
         self.qr_scan_time = config.getfloat("qr_scan_time", 20., minval=1., maxval=120.)
         self.qr_width = config.getint("qr_width", DEFAULT_WIDTH, minval=320, maxval=4096)
-        self.spoolman = Spoolman(config.get("moonraker_url", "http://127.0.0.1:7125"))
+        moonraker_url = config.get("moonraker_url", "http://127.0.0.1:7125")
+        self.spoolman = Spoolman(moonraker_url)
+        self.lane_data = LaneData(moonraker_url) if config.getboolean("lane_data", True) else None
+        self.remote_result = None     # outcome of the last network scan
         self.settings = self._vendor_settings(config)
         self.excluded_ports = []
         for mcu in config.get_prefix_sections("mcu"):
@@ -180,7 +194,6 @@ class ZmodNfc(object):
             if serial:
                 self.excluded_ports.append(serial)
 
-        self.webhooks = self.printer.lookup_object("webhooks")
         self.zmod_color = None
         self.enabled = True
         self.reader_name = ""
@@ -215,6 +228,8 @@ class ZmodNfc(object):
                 ("NFC_ENABLE", "Resume handling scanned tags"),
                 ("NFC_DISABLE", "Ignore scanned tags until NFC_ENABLE")):
             self.gcode.register_command(cmd, getattr(self, "cmd_" + cmd), desc=desc)
+        for name in REMOTE_ENDPOINTS:
+            self.webhooks.register_endpoint("zmod_nfc/" + name, self._endpoint(name))
         self.printer.register_event_handler("klippy:connect", self._handle_connect)
         self.printer.register_event_handler("klippy:ready", self._handle_ready)
         self.printer.register_event_handler("klippy:disconnect", self._handle_disconnect)
@@ -419,25 +434,28 @@ class ZmodNfc(object):
 
     def _handle_scan(self, scan, run_gcode=None):
         """Show the prompt for a scan. run_gcode is given when called from a
-        G-code command (NFC_TEST_SCAN), where run_script would deadlock."""
+        G-code command (NFC_TEST_SCAN), where run_script would deadlock.
+        Returns what happened: "prompt", "assigned", "disabled", "printing"
+        or "no_data"."""
         self.last = scan
         if not self.enabled:
-            return
+            return "disabled"
         if self._printing() and not self.scan_while_printing:
             self.gcode.respond_info("NFC: read %s (ignored while printing)" % scan.title())
-            return
+            return "printing"
         if not scan.has_filament_data() and scan.spool is None:
             self.gcode.respond_info(
                 "NFC: %s has no filament data%s. NFC_DUMP shows what was read."
                 % (scan.source(), (" (Spoolman: %s)" % scan.spoolman_note) if scan.spoolman_note else ""))
-            return
+            return "no_data"
         slots = self._slots()
         if len(slots["slots"]) <= 1:
             self._assign_outside_command(scan, 1, run_gcode)
-            return
+            return "assigned"
         self.pending = scan
         self._slots_before = {n: s["loaded"] for n, s in slots["slots"].items()}
         self._show_prompt(scan, slots)
+        return "prompt"
 
     # Zmod slots -----------------------------------------------------------
 
@@ -595,6 +613,9 @@ class ZmodNfc(object):
                 cmd += " CARD_UID=%s" % scan.uid
             run_gcode(cmd)
             respond("NFC: %s is now Spoolman spool %d (%s)" % (label, spool["id"], scan.title()))
+            self._write_lane_data(scan, slot_number,
+                                  resolve_material(scan.material(), slots["valid_types"]),
+                                  normalize_color(scan.color()))
             return
 
         material = resolve_material(scan.material(), slots["valid_types"])
@@ -612,6 +633,7 @@ class ZmodNfc(object):
             # SILENT=1 keeps Zmod from opening its colour picker.
             run_gcode("CHANGE_ZCOLOR SLOT=%d HEX=%s TYPE=%s SILENT=1"
                             % (slot_number, color, material))
+        self._write_lane_data(scan, slot_number, material, color)
         if spool is not None:
             if self.printer.lookup_object("save_variables", None) is not None:
                 run_gcode("SAVE_VARIABLE VARIABLE=%s VALUE=%d"
@@ -623,6 +645,23 @@ class ZmodNfc(object):
             respond("NFC: %s is now %s (Spoolman spool %d)" % (label, scan.title(), spool["id"]))
         else:
             respond("NFC: %s is now %s #%s" % (label, material or "?", color))
+
+    def _write_lane_data(self, scan, slot_number, material, color):
+        if self.lane_data is None:
+            return
+        info = {"material": material, "color": color, "name": scan.title(),
+                "uid": scan.uid if scan.tag.uid else ""}
+        if scan.spool is not None:
+            filament = scan.spool.get("filament") or {}
+            info["spool_id"] = scan.spool["id"]
+            info["vendor"] = (filament.get("vendor") or {}).get("name")
+            info["nozzle_temp"] = filament.get("settings_extruder_temp")
+            info["bed_temp"] = filament.get("settings_bed_temp")
+        if scan.filament is not None:
+            info["vendor"] = info.get("vendor") or scan.filament.brand
+            info["nozzle_temp"] = info.get("nozzle_temp") or scan.filament.nozzle_temp
+            info["bed_temp"] = info.get("bed_temp") or scan.filament.bed_temp
+        self.lane_data.write_later(slot_number, info)
 
     def _set_active_spool(self, spool_id):
         try:
@@ -879,9 +918,97 @@ class ZmodNfc(object):
         self._close_prompt()
         gcmd.respond_info("NFC: scanning disabled")
 
+    # Network readers ----------------------------------------------------
+    #
+    # Klipper webhooks endpoints, which Moonraker publishes as
+    # http://<printer>:7125/zmod_nfc/<name>. Handlers run on the reactor and
+    # must answer at once; an exception other than command_error would shut
+    # Klipper down.
+
+    def _endpoint(self, name):
+        handler = getattr(self, "_ep_" + name)
+
+        def run(web_request):
+            try:
+                result = handler(web_request)
+            except self.printer.command_error:
+                raise
+            except Exception as exc:
+                LOGGER.exception("zmod_nfc: zmod_nfc/%s failed", name)
+                raise self.printer.command_error("NFC: %s" % exc)
+            web_request.send(result)
+        return run
+
+    def _slots_summary(self):
+        slots = self._slots()
+        return {
+            "toolchanger": slots["toolchanger"],
+            "current": slots["current"],
+            "slots": [dict(slots["slots"][n], slot=n, label=self._slot_label(slots, n))
+                      for n in sorted(slots["slots"])],
+        }
+
+    def _ep_info(self, web_request):
+        data = {"plugin": "zmod_nfc", "api": API_VERSION, "enabled": self.enabled,
+                "printing": self._printing(), "remote": self.remote_result,
+                "pending": self.pending.summary() if self.pending is not None else None}
+        data.update(self._slots_summary())
+        return data
+
+    def _ep_scan(self, web_request):
+        """A tag read by a network reader. Decoding and the Spoolman lookup
+        run on a thread, like a USB reader's; the outcome appears as
+        printer.zmod_nfc.remote under the returned id."""
+        try:
+            tag = tag_from_json(web_request.params)
+        except RemoteError as exc:
+            raise self.printer.command_error("NFC: %s" % exc)
+        if tag.incomplete:
+            return {"accepted": False, "outcome": "incomplete"}
+        scan_id = os.urandom(4).hex()
+        LOGGER.info("zmod_nfc: tag %s from %s (%s)", tag.uid_hex, tag.reader, scan_id)
+
+        def run():
+            try:
+                scan = self._process(tag)
+            except Exception as exc:
+                LOGGER.exception("zmod_nfc: network scan failed")
+                self._post(self._remote_failed, scan_id, str(exc))
+                return
+            self._post(self._remote_done, scan_id, scan)
+        thread = threading.Thread(target=run, name="zmod_nfc network scan")
+        thread.daemon = True
+        thread.start()
+        return {"accepted": True, "id": scan_id}
+
+    def _remote_done(self, scan_id, scan):
+        outcome = self._handle_scan(scan)
+        self.remote_result = {"id": scan_id, "outcome": outcome, "scan": scan.summary(),
+                              "spoolman": scan.spoolman_note}
+
+    def _remote_failed(self, scan_id, error):
+        self.remote_result = {"id": scan_id, "outcome": "error", "error": error}
+
+    def _ep_assign(self, web_request):
+        slot = web_request.get_int("slot")
+        scan = self.pending
+        if scan is None:
+            raise self.printer.command_error("NFC: no scanned tag is waiting for a slot")
+        messages = []
+        self._close_prompt()
+        self._assign(scan, slot, messages.append, self.gcode.run_script)
+        for message in messages:
+            self.gcode.respond_info(message)
+        return {"message": " ".join(messages), "scan": scan.summary()}
+
+    def _ep_cancel(self, web_request):
+        self._close_prompt()
+        return {}
+
     def get_status(self, eventtime):
         return {
             "enabled": self.enabled,
+            "remote": self.remote_result,
             "reader": self.reader_name,
             "state": self.reader_state,
             "error": self.reader_error,
