@@ -5,14 +5,15 @@ import os
 
 from ..transport.serial_port import usb_serial_ports
 from .base import ReaderError
-from . import ccid, pn532, pn5180
+from . import ccid, pn532, pn5180, rc522
+from .bridge import NoBridgeError, SerialBridge
 
 LOGGER = logging.getLogger("zmod_nfc")
 
-READER_TYPES = ("auto", "pn532", "ccid", "acr1552u", "acr122u", "pn5180")
+READER_TYPES = ("auto", "pn532", "ccid", "acr1552u", "acr122u", "pn5180", "rc522")
 
 # USB-serial bridge chips that PN532 boards use, and MCU boards that can
-# run the PN5180 bridge. Other serial ports are only probed when named.
+# run the PN5180/RC522 bridge. Other serial ports are only probed when named.
 PROBE_VIDS = {
     "1a86",   # WCH CH340/CH341/CH9102
     "10c4",   # Silicon Labs CP210x
@@ -70,11 +71,19 @@ def open_reader(kind="auto", device="", baud=115200, ccid_match="",
                 return reader
             except ReaderError as exc:
                 tried.append(str(exc))
-        if kind in ("auto", "pn5180"):
-            reader = pn5180.Pn5180Reader(pn5180.SerialBridge(path, baud), keysets_for_uid)
+        # The PN5180 and the RC522 share the bridge; a PN5180 is tried first
+        # because the RC522 probe would send it register writes it does not
+        # understand.
+        for name, cls in (("pn5180", pn5180.Pn5180Reader), ("rc522", rc522.Rc522Reader)):
+            if kind not in ("auto", name):
+                continue
+            reader = cls(SerialBridge(path, baud), keysets_for_uid)
             try:
                 reader.open()
                 return reader
+            except NoBridgeError as exc:
+                tried.append(str(exc))
+                break             # no bridge on this port: skip the other chip
             except ReaderError as exc:
                 tried.append(str(exc))
     raise ReaderError("no NFC reader found" + _detail(tried))

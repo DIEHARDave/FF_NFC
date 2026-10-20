@@ -31,7 +31,7 @@ QR label ──► camera ──► decode (Spoolman label, OpenSpool, text) ─
 > labels with each printer's camera (scan, prompt, slot assignment and
 > filament insert). The decoders, the QR reader, the Klipper integration and
 > the USB plumbing also have unit tests, which pass under Klipper's Python
-> 3.8. The ACR1552U and PN5180 drivers have **not yet been run against
+> 3.8. The ACR1552U, PN5180 and RC522 drivers have **not yet been run against
 > physical readers**. Reports from owners of those readers are very welcome
 > (see [Reporting a tag](#reporting-a-tag)).
 
@@ -44,10 +44,11 @@ QR label ──► camera ──► decode (Spoolman label, OpenSpool, text) ─
 | Other PC/SC readers: ACR1252U, ACR1255U, Identiv, ... | USB (CCID) | depends on the reader | Same driver: any reader with the PC/SC Part 3 storage-card commands. |
 | **PN532** | USB-serial adapter (CH340, CP210x, PL2303, FTDI) | ISO 14443A | Tested with an all-in-one USB-C "PN532 V2.0" board (CH340E, HSU wired in). On other boards, set **HSU/UART** mode (both switches off on the common red and blue boards). Cannot read ISO 15693 (OpenPrintTag). |
 | **PN5180** | USB through a bridge MCU | ISO 14443A + ISO 15693 | The PN5180 has no USB of its own. The driver is written; the bridge firmware is planned. See [docs/pn5180-bridge.md](docs/pn5180-bridge.md). |
-| **[zmod_esp32-nfc](https://github.com/DIEHARDave/zmod_esp32-nfc)** | Wi-Fi (ESP32 + PN532) | ISO 14443A | A reader anywhere on the network, for one or several printers. See [Network readers](#network-readers). |
+| **RC522** (MFRC522) | USB through the same bridge MCU as the PN5180 | ISO 14443A | SPI only, like the PN5180, so it needs the same bridge (and the bridge firmware is still planned). Power it from 3.3 V. Cannot read ISO 15693 (OpenPrintTag). See [docs/pn5180-bridge.md](docs/pn5180-bridge.md#rc522). |
+| **[zmod_esp32-nfc](https://github.com/DIEHARDave/zmod_esp32-nfc)** | Wi-Fi: an ESP32 with a PN532 (I2C or HSU), an RC522 (SPI) or a PN5180 (SPI) | ISO 14443A; also ISO 15693 with a PN5180 | A reader anywhere on the network, for one or several printers. No bridge needed: the ESP32 drives the RC522 and PN5180 itself. Tested with a PN532; the RC522 and PN5180 builds are untested on hardware. See [Network readers](#network-readers). |
 
 `reader: auto` (the default) uses the first CCID reader it finds, then probes
-USB-serial adapters for a PN532 or a PN5180 bridge. It never probes serial
+USB-serial adapters for a PN532 or a PN5180/RC522 bridge. It never probes serial
 ports that a Klipper MCU uses, or ports from unknown USB vendors.
 
 Everything uses the Python standard library: no pyserial, libusb, pcscd or
@@ -58,16 +59,16 @@ MIPS CPU is impractical.
 
 | Format | Tag | Readers | Notes |
 |--------|-----|---------|-------|
-| [OpenPrintTag](https://specs.openprinttag.org) (Prusa) | ICODE SLIX2 (ISO 15693) | ACR1552U, PN5180 | CBOR. Remaining weight from the aux region. |
+| [OpenPrintTag](https://specs.openprinttag.org) (Prusa) | ICODE SLIX2 (ISO 15693) | ACR1552U, PN5180 (USB or zmod_esp32-nfc) | CBOR. Remaining weight from the aux region. |
 | [OpenSpool](https://openspool.io) | NTAG21x | all | JSON NDEF record. |
 | [OpenTag3D](https://opentag3d.info) | NTAG21x / ISO 15693 | all | Spec 2.x, and the older 0.012 layout. |
 | [TigerTag](https://tigertag.io) | NTAG21x | all | Offline ID database. |
-| Bambu Lab | MIFARE Classic 1K | ACR1552U, PN532, PN5180 | Works out of the box. |
-| Creality (CFS) | MIFARE Classic 1K | ACR1552U, PN532, PN5180 | Works out of the box, encrypted tags included. |
-| Snapmaker (U1) | MIFARE Classic 1K | ACR1552U, PN532, PN5180 | Works out of the box: the key derivation is [published](https://github.com/DnG-Crafts/U1-RFID/blob/main/docs/U1%20Tag%20Protocol.md). The tag's RSA signature is not checked, so re-written tags read too. |
+| Bambu Lab | MIFARE Classic 1K | ACR1552U, PN532, PN5180, RC522 | Works out of the box. |
+| Creality (CFS) | MIFARE Classic 1K | ACR1552U, PN532, PN5180, RC522 | Works out of the box, encrypted tags included. |
+| Snapmaker (U1) | MIFARE Classic 1K | ACR1552U, PN532, PN5180, RC522 | Works out of the box: the key derivation is [published](https://github.com/DnG-Crafts/U1-RFID/blob/main/docs/U1%20Tag%20Protocol.md). The tag's RSA signature is not checked, so re-written tags read too. |
 | Anycubic (ACE) | NTAG21x | all | |
 | Elegoo | NTAG21x | all | |
-| Qidi | MIFARE Classic 1K | ACR1552U, PN532, PN5180 | |
+| Qidi | MIFARE Classic 1K | ACR1552U, PN532, PN5180, RC522 | |
 | [SpoolEase](https://spoolease.io) | NTAG21x | all | URL record. |
 | Spoolman references | any NDEF tag | all | `web+spoolman:s-<id>` / `.../spool/show/<id>` links, and [nfc2klipper](https://github.com/bofh69/nfc2klipper) `SPOOL:<id>` text. The same links work as [QR labels](#spoolman-qr-labels). |
 | Plain text | any NDEF tag | all | `PLA:FF0000`, `PETG #00FF00`, `PLA Silk;123456;Brand`. Also as QR codes. |
@@ -188,7 +189,8 @@ Creator 5's `T0`..`T3` keys alike. Set `lane_data: False` to turn it off.
 ## Network readers
 
 [zmod_esp32-nfc](https://github.com/DIEHARDave/zmod_esp32-nfc) is an ESP32
-with a PN532 that reads tags over Wi-Fi, so one reader can serve several
+with a PN532 (I2C or HSU), an RC522 or a PN5180 (both SPI) that reads tags
+over Wi-Fi, so one reader can serve several
 printers and does not need a USB port on the printer. It sends the **whole
 tag read** (UID, memory dump, which MIFARE keys opened which sector) to
 zmod_nfc, which treats it exactly like a tag on a USB reader: every format

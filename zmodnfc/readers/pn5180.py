@@ -1,11 +1,8 @@
 """NXP PN5180 (ISO 14443A and ISO 15693) through a USB bridge.
 
 The PN5180 only has SPI plus BUSY and RST lines, so on a printer it needs a
-small USB bridge: a microcontroller (RP2040, ESP32-S3, ...) that appears as
-a USB serial port and runs the PN5180 SPI transactions for the host. The
-bridge protocol is documented in docs/pn5180-bridge.md; this module holds
-the whole PN5180 command layer, so the bridge firmware stays a thin SPI
-pipe.
+small USB bridge (bridge.py, shared with the RC522); this module holds the
+whole PN5180 command layer.
 
 Status: written from the PN5180 datasheet and not yet run against hardware;
 the bridge firmware is not part of this release."""
@@ -15,8 +12,8 @@ import struct
 import time
 
 from ..tag import TECH_ISO14443A, TECH_ISO15693
-from ..transport.serial_port import SerialError, SerialPort
-from .base import CardSession, Reader, ReaderError
+from .base import CardSession, Reader
+from .bridge import BridgeError, SerialBridge  # noqa: F401  (SerialBridge for callers)
 
 LOGGER = logging.getLogger("zmod_nfc")
 
@@ -56,87 +53,6 @@ REMOVAL_MISSES = 2
 
 class Pn5180Error(IOError):
     """No or a bad answer from the card."""
-
-
-class BridgeError(ReaderError):
-    """The USB bridge failed; the reader is reopened."""
-
-
-# --- transports ------------------------------------------------------------
-
-def _crc8(data):
-    crc = 0
-    for byte in data:
-        crc ^= byte
-        for _ in range(8):
-            crc = ((crc << 1) ^ 0x07) & 0xFF if crc & 0x80 else (crc << 1) & 0xFF
-    return crc
-
-
-class SerialBridge(object):
-    """PN5180 SPI over the zmod_nfc serial bridge protocol (v1)."""
-
-    SYNC = 0xA5
-    CMD_HELLO = 0x01
-    CMD_RESET = 0x02
-    CMD_EXCHANGE = 0x03
-    MAGIC = b"PN5180BRIDGE"
-
-    def __init__(self, path, baud=115200):
-        self.port = SerialPort(path, baud)
-        self.path = path
-        self.version = None
-
-    def open(self):
-        try:
-            self.port.open()
-            reply = self._call(self.CMD_HELLO, b"", timeout=0.5)
-        except (SerialError, BridgeError) as exc:
-            self.port.close()
-            raise BridgeError("%s: %s" % (self.path, exc))
-        if not reply.startswith(self.MAGIC):
-            self.port.close()
-            raise BridgeError("%s: not a PN5180 bridge" % self.path)
-        self.version = reply[len(self.MAGIC):].decode("ascii", "replace")
-
-    def close(self):
-        self.port.close()
-
-    def reset(self):
-        self._call(self.CMD_RESET, b"", timeout=1.0)
-
-    def exchange(self, tx, rx_len=0, timeout=1.0):
-        """Send one PN5180 command frame and, if rx_len, read the response
-        frame; the bridge waits on BUSY around both."""
-        return self._call(self.CMD_EXCHANGE, struct.pack("<H", rx_len) + bytes(tx), timeout)
-
-    def _call(self, cmd, payload, timeout):
-        body = bytes([cmd]) + struct.pack("<H", len(payload)) + payload
-        try:
-            self.port.flush_input()
-            self.port.write(bytes([self.SYNC]) + body + bytes([_crc8(body)]))
-            deadline = time.monotonic() + timeout
-            while True:
-                byte = self.port.read_exact(1, max(0., deadline - time.monotonic()))
-                if not byte:
-                    raise BridgeError("bridge did not answer")
-                if byte[0] == self.SYNC:
-                    break
-            head = self.port.read_exact(3, timeout)
-            if len(head) < 3:
-                raise BridgeError("short bridge reply")
-            length = struct.unpack_from("<H", head, 1)[0]
-            rest = self.port.read_exact(length + 1, timeout)
-        except SerialError as exc:
-            raise BridgeError(str(exc))
-        if len(rest) < length + 1 or _crc8(head + rest[:-1]) != rest[-1]:
-            raise BridgeError("corrupt bridge reply")
-        if head[0] != cmd | 0x80:
-            raise BridgeError("bridge answered command 0x%02X" % head[0])
-        data = rest[:-1]
-        if not data or data[0] != 0:
-            raise BridgeError("bridge error %d" % (data[0] if data else -1))
-        return data[1:]
 
 
 # --- PN5180 command layer --------------------------------------------------
@@ -351,6 +267,12 @@ class Pn5180Reader(Reader):
         except (BridgeError, Pn5180Error) as exc:
             self.transport.close()
             raise BridgeError("PN5180: %s" % exc)
+        # Released PN5180 firmware is 3.x or 4.x (5 leaves room for the
+        # next); anything else is another chip, such as an RC522, on the bridge.
+        if fw[1] not in (3, 4, 5):
+            self.transport.close()
+            raise BridgeError("PN5180: no PN5180 on the bridge (firmware %02X %02X)"
+                              % (fw[1], fw[0]))
         self.name = "PN5180 fw %d.%d via %s" % (fw[1], fw[0], getattr(self.transport, "path", "bridge"))
 
     def close(self):
@@ -389,13 +311,3 @@ class Pn5180Reader(Reader):
     def describe(self):
         return self.name
 
-
-def probe(path, baud=115200):
-    bridge = SerialBridge(path, baud)
-    try:
-        bridge.open()
-        return True
-    except ReaderError:
-        return False
-    finally:
-        bridge.close()

@@ -3,7 +3,7 @@ import unittest
 
 import helpers  # noqa: F401  (sets sys.path)
 
-from zmodnfc.readers import base, ccid, pn532
+from zmodnfc.readers import base, ccid, pn532, rc522
 from zmodnfc.readers.base import KeySet
 from zmodnfc.tag import KIND_MIFARE_CLASSIC, KIND_TYPE2
 from zmodnfc.transport import usbfs
@@ -354,6 +354,151 @@ class Pn532Test(unittest.TestCase):
         port = FakePort([b""])
         with self.assertRaises(pn532.Pn532Error):
             pn532.Pn532(port).command(pn532.CMD_GET_FIRMWARE_VERSION, timeout=0.05)
+
+
+class FakeRc522Bridge(object):
+    """An MFRC522 behind the USB bridge's TRANSFER command, with one card:
+    an NTAG with a 7-byte UID (two cascade levels) that also answers MIFARE
+    authentication with KEY."""
+
+    KEY = bytes.fromhex("A0A1A2A3A4A5")
+
+    def __init__(self, memory, uid, version=0x92):
+        self.memory = memory
+        self.uid = uid
+        self.regs = {rc522.REG_VERSION: version}
+        self.fifo = bytearray()
+        self.answer_bits = 0
+        self.authent_frames = []
+
+    def open(self):
+        pass
+
+    def close(self):
+        pass
+
+    def transfer(self, tx):
+        addr = tx[0]
+        reg = (addr >> 1) & 0x3F
+        if not addr & 0x80:
+            for value in tx[1:]:
+                self._write(reg, value)
+            return bytes(len(tx))
+        # Byte i read back belongs to the address clocked out as byte i-1.
+        return bytes([0] + [self._read((a >> 1) & 0x3F) for a in tx[:-1]])
+
+    def _read(self, reg):
+        if reg == rc522.REG_FIFO_DATA:
+            return self.fifo.pop(0) if self.fifo else 0
+        if reg == rc522.REG_FIFO_LEVEL:
+            return len(self.fifo)
+        if reg == rc522.REG_CONTROL:
+            return self.answer_bits
+        if reg == rc522.REG_COMMAND:
+            return 0
+        return self.regs.get(reg, 0)
+
+    def _write(self, reg, value):
+        if reg == rc522.REG_FIFO_DATA:
+            self.fifo.append(value)
+        elif reg == rc522.REG_FIFO_LEVEL:
+            if value & 0x80:
+                self.fifo = bytearray()
+        elif reg == rc522.REG_COM_IRQ:
+            if not value & 0x80:
+                self.regs[reg] = self.regs.get(reg, 0) & ~value
+        elif reg == rc522.REG_BIT_FRAMING:
+            self.regs[reg] = value
+            if value & 0x80 and self.regs.get(rc522.REG_COMMAND) == rc522.CMD_TRANSCEIVE:
+                self._transceive(bytes(self.fifo), value & 0x07)
+        elif reg == rc522.REG_COMMAND:
+            self.regs[reg] = value
+            if value == rc522.CMD_MF_AUTHENT:
+                frame = bytes(self.fifo)
+                self.authent_frames.append(frame)
+                self.fifo = bytearray()
+                ok = frame[2:8] == self.KEY and frame[8:12] == self.uid[-4:]
+                if ok:
+                    self.regs[rc522.REG_STATUS2] = rc522.STATUS2_CRYPTO1_ON
+                self.regs[rc522.REG_COM_IRQ] = rc522.IRQ_IDLE if ok else rc522.IRQ_TIMER
+        else:
+            self.regs[reg] = value
+
+    def _transceive(self, frame, tx_bits):
+        self.fifo = bytearray()
+        field = self.regs.get(rc522.REG_TX_CONTROL, 0) & 0x03 == 0x03
+        answer = None
+        if field and tx_bits == 7 and frame == bytes([rc522.WUPA]):
+            answer = b"\x44\x00"
+        elif field and tx_bits == 0:
+            answer = self._card(frame)
+        self.answer_bits = 0
+        if answer is None:
+            self.regs[rc522.REG_COM_IRQ] = rc522.IRQ_TIMER
+            return
+        self.fifo += answer
+        self.regs[rc522.REG_COM_IRQ] = rc522.IRQ_RX | rc522.IRQ_IDLE
+
+    def _card(self, frame):
+        def crc(data):
+            return data + rc522.crc_a(data)
+        uid = self.uid
+        cl1 = b"\x88" + uid[:3]
+        cl2 = uid[3:7]
+        for cascade, part, sak in ((0x93, cl1, 0x04), (0x95, cl2, 0x00)):
+            bcc = bytes([part[0] ^ part[1] ^ part[2] ^ part[3]])
+            if frame == bytes([cascade, 0x20]):
+                return part + bcc
+            if frame == crc(bytes([cascade, 0x70]) + part + bcc):
+                return crc(bytes([sak]))
+        if len(frame) == 4 and frame[0] == 0x30 and frame == crc(frame[:2]):
+            page = frame[1]
+            return crc(bytes(self.memory[page * 4:page * 4 + 16]))
+        return None
+
+
+class Rc522Test(unittest.TestCase):
+    UID = bytes.fromhex("04112233445566")
+
+    def test_crc_a(self):
+        self.assertEqual(rc522.crc_a(b"\x30\x00"), b"\x02\xa8")
+
+    def test_register_spi_bytes(self):
+        bridge = FakeRc522Bridge(b"", self.UID)
+        chip = rc522.Rc522(bridge)
+        self.assertEqual(chip.read_register(rc522.REG_VERSION), 0x92)
+        chip.write_register(rc522.REG_MODE, 0x3D)
+        self.assertEqual(bridge.regs[rc522.REG_MODE], 0x3D)
+
+    def test_reads_ntag(self):
+        from helpers import mime_record, type2_tag
+        from zmodnfc import decoders
+        payload = (b'{"protocol":"openspool","version":"1.0","brand":"SUNLU","type":"PLA",'
+                   b'"color_hex":"0022FF","min_temp":"190","max_temp":"230"}')
+        image = type2_tag(mime_record("application/json", payload), uid=self.UID).memory
+        reader = rc522.Rc522Reader(FakeRc522Bridge(image, self.UID))
+        reader.open()
+        self.assertTrue(reader.describe().startswith("RC522 2.0"))
+        tag = reader.poll()
+        self.assertEqual(tag.uid, self.UID)
+        filament, _ = decoders.decode(tag)
+        self.assertEqual((filament.fmt, filament.brand, filament.color),
+                         ("OpenSpool", "SUNLU", "0022FF"))
+        # The same card again is not read twice; the field is off between polls.
+        self.assertIsNone(reader.poll())
+        self.assertEqual(reader.transport.regs[rc522.REG_TX_CONTROL] & 0x03, 0)
+
+    def test_mifare_authenticate(self):
+        bridge = FakeRc522Bridge(b"", self.UID)
+        chip = rc522.Rc522(bridge)
+        self.assertFalse(chip.mifare_authenticate(bytes(6), False, 4, self.UID[-4:]))
+        self.assertTrue(chip.mifare_authenticate(bridge.KEY, True, 4, self.UID[-4:]))
+        self.assertEqual(bridge.authent_frames[-1][:2], b"\x61\x04")
+
+    def test_no_rc522_on_bridge(self):
+        reader = rc522.Rc522Reader(FakeRc522Bridge(b"", self.UID, version=0x00))
+        with self.assertRaises(base.ReaderError):
+            reader.open()
 
 
 if __name__ == "__main__":
