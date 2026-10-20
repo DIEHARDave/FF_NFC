@@ -198,6 +198,15 @@ class LaneDataTest(unittest.TestCase):
         self.assertEqual(value["color"], "#6600CC")
         self.assertTrue(value["zmod_afclite"])
 
+    def test_value_notes_zmod_colour_and_time(self):
+        value = lane_data.lane_value({"lane": "0", "zmod_afclite_color": "#24E4A0"}, 1, {
+            "material": "PLA", "color": "6600CC", "zmod_color": "48358c", "uid": "04AA",
+            "scan_time": "2026-10-20T23:00:00Z"})
+        self.assertEqual(value["color"], "#6600CC")
+        self.assertEqual(value["zmod_afclite_color"], "#48358C")
+        self.assertEqual(value["scan_time"], "2026-10-20T23:00:00Z")
+        self.assertNotIn("zmod_color", value)
+
     def test_same_spool_keeps_other_writers_details(self):
         existing = {"lane": "0", "spool_id": 19, "spool_name": "Violet", "helix_material": "PLA"}
         value = lane_data.lane_value(existing, 1, {

@@ -650,7 +650,7 @@ class ZmodNfc(object):
             respond("NFC: %s is now Spoolman spool %d (%s)" % (label, spool["id"], scan.title()))
             self._write_lane_data(scan, slot_number,
                                   resolve_material(scan.material(), slots["valid_types"]),
-                                  normalize_color(scan.color()))
+                                  normalize_color(scan.color()), slots["palette"])
             return
 
         material = resolve_material(scan.material(), slots["valid_types"])
@@ -670,7 +670,7 @@ class ZmodNfc(object):
             # SILENT=1 keeps Zmod from opening its colour picker.
             run_gcode("CHANGE_ZCOLOR SLOT=%d HEX=%s TYPE=%s SILENT=1"
                             % (slot_number, zmod_color, material))
-        self._write_lane_data(scan, slot_number, material, color)
+        self._write_lane_data(scan, slot_number, material, color, slots["palette"])
         if spool is not None:
             if self.printer.lookup_object("save_variables", None) is not None:
                 run_gcode("SAVE_VARIABLE VARIABLE=%s VALUE=%d"
@@ -683,11 +683,15 @@ class ZmodNfc(object):
         else:
             respond("NFC: %s is now %s #%s" % (label, material or "?", zmod_color))
 
-    def _write_lane_data(self, scan, slot_number, material, color):
+    def _write_lane_data(self, scan, slot_number, material, color, palette=None):
         if self.lane_data is None:
             return
         info = {"material": material, "color": color, "name": scan.title(),
                 "uid": scan.uid if scan.tag.uid else ""}
+        if color and palette:
+            # The palette colour Zmod gets for this one (zmod_afclite snaps
+            # the same way), so its lane_data mirror keeps the exact colour.
+            info["zmod_color"] = color if color in palette else nearest_palette_color(color, palette)
         if scan.spool is not None:
             filament = scan.spool.get("filament") or {}
             info["spool_id"] = scan.spool["id"]

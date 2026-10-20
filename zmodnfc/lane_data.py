@@ -8,6 +8,7 @@ keeping every other key, so afclite's and other writers' fields survive.
 Entries are found by their "lane" field ("0" for the first slot), because
 the key differs between printers (AD5X: lane1..lane4, Creator 5: T0..T3)."""
 
+import datetime
 import json
 import logging
 import threading
@@ -19,8 +20,9 @@ LOGGER = logging.getLogger("zmod_nfc")
 
 NAMESPACE = "lane_data"
 TIMEOUT = 10.0
-# Written a little after the assignment, once zmod_afclite has mirrored
-# the slot's new colour; afclite then merges into this entry, not over it.
+# Written at once, for HelixScreen, which re-reads lane_data 2 s after the
+# slot's firmware colour changes, and again a little after the assignment,
+# once zmod_afclite has mirrored the slot's new colour.
 DELAY = 5.0
 
 
@@ -76,7 +78,19 @@ def lane_value(existing, slot, info):
         value["vendor_name"] = info["vendor"]
     value["zmod_nfc_name"] = info.get("name") or ""
     value["zmod_nfc_uid"] = info.get("uid") or ""
+    if info.get("zmod_color"):
+        # zmod_afclite's note of the Zmod colour it mirrored: with Zmod's new
+        # colour already noted, it keeps this entry's exact colour.
+        value["zmod_afclite_color"] = "#" + info["zmod_color"].lstrip("#").upper()
+    if info.get("scan_time"):
+        # When the spool was set, so HelixScreen can order this record
+        # against an edit made on its screen.
+        value["scan_time"] = info["scan_time"]
     return value
+
+
+def utc_now():
+    return datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 class LaneData(object):
@@ -109,14 +123,18 @@ class LaneData(object):
         return key
 
     def write_later(self, slot, info, delay=DELAY):
-        """write() on a timer thread; failures are only logged."""
+        """write() at once and again after delay, on timer threads; failures
+        are only logged."""
+        info = dict(info, scan_time=info.get("scan_time") or utc_now())
+
         def run():
             try:
                 key = self.write(slot, info)
                 LOGGER.info("zmod_nfc: lane_data %s set for slot %d", key, slot)
             except (urllib.error.URLError, OSError, ValueError) as exc:
                 LOGGER.warning("zmod_nfc: could not write lane_data for slot %d: %s", slot, exc)
-        timer = threading.Timer(delay, run)
-        timer.daemon = True
-        timer.start()
-        return timer
+        timers = [threading.Timer(0, run), threading.Timer(delay, run)]
+        for timer in timers:
+            timer.daemon = True
+            timer.start()
+        return timers
