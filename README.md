@@ -43,12 +43,14 @@ QR label ──► camera ──► decode (Spoolman label, OpenSpool, text) ─
 | **ACR122U** | USB (CCID) | ISO 14443A | Tested. MIFARE Classic is read through its internal PN532. |
 | Other PC/SC readers: ACR1252U, ACR1255U, Identiv, ... | USB (CCID) | depends on the reader | Same driver: any reader with the PC/SC Part 3 storage-card commands. |
 | **PN532** | USB-serial adapter (CH340, CP210x, PL2303, FTDI) | ISO 14443A | Tested with an all-in-one USB-C "PN532 V2.0" board (CH340E, HSU wired in). On other boards, set **HSU/UART** mode (both switches off on the common red and blue boards). Cannot read ISO 15693 (OpenPrintTag). |
-| **PN5180** | USB through a bridge MCU | ISO 14443A + ISO 15693 | The PN5180 has no USB of its own. The driver is written; the bridge firmware is planned. See [docs/pn5180-bridge.md](docs/pn5180-bridge.md). |
-| **RC522** (MFRC522) | USB through the same bridge MCU as the PN5180 | ISO 14443A | SPI only, like the PN5180, so it needs the same bridge (and the bridge firmware is still planned). Power it from 3.3 V. Cannot read ISO 15693 (OpenPrintTag). See [docs/pn5180-bridge.md](docs/pn5180-bridge.md#rc522). |
+| **[esp32_rfidnfc2usb_bridge](https://github.com/DIEHARDave/esp32_rfidnfc2usb_bridge)** | USB: an ESP32 with a PN532 (I2C or UART), an RC522 or a PN5180 (both SPI), which zmod_nfc sees as a PN532 | ISO 14443A | One small board for any of the three chips; no setting needed (`reader: auto` or `pn532`). Tested with a PN532 on an ESP32-C3 on an AD5X; RC522 and PN5180 untested on hardware. See [USB bridge for PN532, RC522 and PN5180](#usb-bridge-for-pn532-rc522-and-pn5180). |
+| **PN5180** | USB through [esp32_rfidnfc2usb_bridge](#usb-bridge-for-pn532-rc522-and-pn5180) | ISO 14443A (ISO 15693 not yet through the bridge) | The PN5180 has no USB of its own. Through the bridge it reads like a PN532; zmod_nfc does not use the bridge's ISO 15693 commands yet, so OpenPrintTag needs an ACR1552U or zmod_esp32-nfc for now. |
+| **RC522** (MFRC522) | USB through [esp32_rfidnfc2usb_bridge](#usb-bridge-for-pn532-rc522-and-pn5180) | ISO 14443A | SPI only, so it needs the bridge. Power it from 3.3 V. Cannot read ISO 15693 (OpenPrintTag). |
 | **[zmod_esp32-nfc](https://github.com/DIEHARDave/zmod_esp32-nfc)** | Wi-Fi: an ESP32 with a PN532 (I2C or HSU), an RC522 (SPI) or a PN5180 (SPI) | ISO 14443A; also ISO 15693 with a PN5180 | A reader anywhere on the network, for one or several printers. No bridge needed: the ESP32 drives the RC522 and PN5180 itself. Tested with a PN532; the RC522 and PN5180 builds are untested on hardware. See [Network readers](#network-readers). |
 
 `reader: auto` (the default) uses the first CCID reader it finds, then probes
-USB-serial adapters for a PN532 or a PN5180/RC522 bridge. It never probes serial
+USB-serial adapters for a PN532 (an esp32_rfidnfc2usb_bridge answers as one,
+whatever chip it carries) or a PN5180/RC522 bridge. It never probes serial
 ports that a Klipper MCU uses, or ports from unknown USB vendors.
 
 Everything uses the Python standard library: no pyserial, libusb, pcscd or
@@ -205,6 +207,35 @@ registers Klipper endpoints (`zmod_nfc/scan`, ...) that Moonraker publishes
 on its HTTP API. There is no extra port or server on the printer, and
 Moonraker's authorization applies (a reader outside `trusted_clients` needs
 an API key). The protocol is in [docs/remote-api.md](docs/remote-api.md).
+
+## USB bridge for PN532, RC522 and PN5180
+
+[esp32_rfidnfc2usb_bridge](https://github.com/DIEHARDave/esp32_rfidnfc2usb_bridge)
+is ESP32 firmware that puts a PN532, an RC522 or a PN5180 on the printer's
+USB port. The printer sees **a PN532 on a USB serial port** whichever chip is
+fitted, so zmod_nfc uses its PN532 driver for all three. There is nothing to
+configure here: `reader: auto` (the default) finds the bridge, as does
+`reader: pn532`.
+
+- **PN532**: the bridge passes commands through to the chip.
+- **RC522 / PN5180**: the bridge emulates a PN532 for ISO 14443A tags: NTAG,
+  MIFARE Classic (so Bambu, Creality, Snapmaker and Qidi tags read as usual)
+  and Type 4.
+- **Boards**: ESP32-C3, S2, S3 and C6 show up as a USB CDC-ACM port
+  (`/dev/ttyACM0`), which the AD5X and Creator 5 kernels support. Classic
+  ESP32 boards use their CP210x or CH340 chip (`/dev/ttyUSB0`).
+
+The bridge also reads ISO 15693 tags (OpenPrintTag) on a PN5180 through
+commands of its own, but zmod_nfc does not use them yet. Wiring, pins and
+flashing are in the bridge's README.
+
+**Status:** a PN532 on I2C through an ESP32-C3 bridge was found and read on
+an AD5X, and on a PC this driver decoded an OpenSpool NTAG216 through it. The
+RC522 and PN5180 through the bridge have not been run on hardware yet.
+
+(The thin SPI bridge protocol in [docs/pn5180-bridge.md](docs/pn5180-bridge.md),
+where zmod_nfc's own PN5180 and RC522 drivers do the chip work, has no
+firmware. The esp32_rfidnfc2usb_bridge covers the same chips.)
 
 ## Spoolman QR labels
 
