@@ -8,12 +8,12 @@ API and websocket, so there is no extra port or server on the printer:
 
 | Endpoint | Moonraker URL |
 |----------|---------------|
-| `zmod_nfc/scan` | `POST http://<printer>:7125/zmod_nfc/scan` |
-| `zmod_nfc/assign` | `POST http://<printer>:7125/zmod_nfc/assign` |
-| `zmod_nfc/cancel` | `POST http://<printer>:7125/zmod_nfc/cancel` |
-| `zmod_nfc/info` | `GET http://<printer>:7125/zmod_nfc/info` |
+| `zmod_nfc/scan` | `POST http://<printer>:7125/printer/zmod_nfc/scan` |
+| `zmod_nfc/assign` | `POST http://<printer>:7125/printer/zmod_nfc/assign` |
+| `zmod_nfc/cancel` | `POST http://<printer>:7125/printer/zmod_nfc/cancel` |
+| `zmod_nfc/info` | `GET http://<printer>:7125/printer/zmod_nfc/info` |
 
-Over the websocket the same endpoints are JSON-RPC methods `zmod_nfc.scan`
+Over the websocket the same endpoints are JSON-RPC methods `printer.zmod_nfc.scan`
 and so on. Bodies are JSON objects; Moonraker wraps replies as
 `{"result": ...}` and errors as HTTP 400 with
 `{"error": {"message": "..."}}`. Moonraker's authorization applies: a reader
@@ -25,7 +25,7 @@ decodes every format it knows and handles the scan like one from a USB
 reader: Spoolman lookup, the slot prompt on the printer's screen, filament
 insert picking the slot, and lane data.
 
-## POST /zmod_nfc/scan
+## POST /printer/zmod_nfc/scan
 
 One tag read:
 
@@ -83,7 +83,7 @@ printing unless `scan_while_printing`), `no_data`, or `error` (with
 `incomplete` read is answered at once with
 `{"accepted": false, "outcome": "incomplete"}`.
 
-## GET /zmod_nfc/info
+## GET /printer/zmod_nfc/info
 
 The printer's slots, the scan waiting for a slot and the last network
 scan's outcome:
@@ -102,7 +102,7 @@ scan's outcome:
 A 404 from Moonraker means zmod_nfc is not installed, is older than this
 API, or Klipper is not running.
 
-## POST /zmod_nfc/assign
+## POST /printer/zmod_nfc/assign
 
 Answer the open prompt from the reader: `{"slot": 2}`. Fails with
 `NFC: no scanned tag is waiting for a slot` when the prompt was closed or
@@ -112,6 +112,6 @@ timed out; send the scan again first.
 {"result": {"message": "NFC: Slot 2 is now Spoolman spool 12 (Bambu Lab PLA Matte)", "scan": {}}}
 ```
 
-## POST /zmod_nfc/cancel
+## POST /printer/zmod_nfc/cancel
 
 Close the prompt. Body `{}`.

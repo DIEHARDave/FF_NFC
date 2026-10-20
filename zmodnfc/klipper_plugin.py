@@ -921,7 +921,7 @@ class ZmodNfc(object):
     # Network readers ----------------------------------------------------
     #
     # Klipper webhooks endpoints, which Moonraker publishes as
-    # http://<printer>:7125/zmod_nfc/<name>. Handlers run on the reactor and
+    # http://<printer>:7125/printer/zmod_nfc/<name>. Handlers run on the reactor and
     # must answer at once; an exception other than command_error would shut
     # Klipper down.
 
