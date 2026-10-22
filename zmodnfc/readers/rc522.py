@@ -5,7 +5,7 @@ bridge as the PN5180 (bridge.py); this module drives the chip one register
 access at a time over the bridge's TRANSFER command. ISO 14443A only:
 NTAG / Ultralight and MIFARE Classic (the chip does Crypto1 itself). Like
 the PN532 it cannot read ISO 15693 (OpenPrintTag), and ISO-DEP (Type 4)
-framing is not implemented. The register use matches zmod_esp32-nfc's
+framing is not implemented. The register use matches LaneTag's
 RC522 driver.
 
 Status: written from the MFRC522 datasheet and not yet run against

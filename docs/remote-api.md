@@ -1,7 +1,7 @@
 # Network reader API
 
 Readers on the network, such as
-[zmod_esp32-nfc](https://github.com/DIEHARDave/zmod_esp32-nfc), send tag
+[LaneTag](https://github.com/DIEHARDave/LaneTag), send tag
 reads to zmod_nfc **through Moonraker**. zmod_nfc registers Klipper webhooks
 endpoints, and Moonraker publishes every Klipper endpoint on its own HTTP
 API and websocket, so there is no extra port or server on the printer:
@@ -31,7 +31,7 @@ One tag read:
 
 ```json
 {
-  "reader": "zmod_esp32-nfc zmod-nfc-a1b2",
+  "reader": "LaneTag lanetag-a1b2",
   "uid": "04A1B2C3D4E5F6",
   "kind": "type2",
   "sak": 0,

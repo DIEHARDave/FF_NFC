@@ -14,7 +14,7 @@ NFC_QR_SCAN reads a QR label (Spoolman, OpenSpool JSON, text) through the
 printer camera instead. The camera module does that in a child process;
 its text then takes the same path as a tag's.
 
-Network readers (zmod_esp32-nfc) send their raw tag reads to webhooks
+Network readers (LaneTag) send their raw tag reads to webhooks
 endpoints that Moonraker publishes (zmod_nfc/scan, ...; remote.py); those
 take the same path too.
 

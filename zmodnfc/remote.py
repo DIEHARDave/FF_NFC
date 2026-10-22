@@ -1,4 +1,4 @@
-"""Network readers (zmod_esp32-nfc): tag reads that arrive through Moonraker.
+"""Network readers (LaneTag): tag reads that arrive through Moonraker.
 
 zmod_nfc registers Klipper webhooks endpoints (zmod_nfc/scan, ...), which
 Moonraker publishes on its own HTTP API and websocket - no extra port or

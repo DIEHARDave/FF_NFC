@@ -44,9 +44,9 @@ QR label ──► camera ──► decode (Spoolman label, OpenSpool, text) ─
 | Other PC/SC readers: ACR1252U, ACR1255U, Identiv, ... | USB (CCID) | depends on the reader | Same driver: any reader with the PC/SC Part 3 storage-card commands. |
 | **PN532** | USB-serial adapter (CH340, CP210x, PL2303, FTDI) | ISO 14443A | Tested with an all-in-one USB-C "PN532 V2.0" board (CH340E, HSU wired in). On other boards, set **HSU/UART** mode (both switches off on the common red and blue boards). Cannot read ISO 15693 (OpenPrintTag). |
 | **[esp32_rfidnfc2usb_bridge](https://github.com/DIEHARDave/esp32_rfidnfc2usb_bridge)** | USB: an ESP32 with a PN532 (I2C or UART), an RC522 or a PN5180 (both SPI), which zmod_nfc sees as a PN532 | ISO 14443A | One small board for any of the three chips; no setting needed (`reader: auto` or `pn532`). Tested with a PN532 on an ESP32-C3 on an AD5X; RC522 and PN5180 untested on hardware. See [USB bridge for PN532, RC522 and PN5180](#usb-bridge-for-pn532-rc522-and-pn5180). |
-| **PN5180** | USB through [esp32_rfidnfc2usb_bridge](#usb-bridge-for-pn532-rc522-and-pn5180) | ISO 14443A (ISO 15693 not yet through the bridge) | The PN5180 has no USB of its own. Through the bridge it reads like a PN532; zmod_nfc does not use the bridge's ISO 15693 commands yet, so OpenPrintTag needs an ACR1552U or zmod_esp32-nfc for now. |
+| **PN5180** | USB through [esp32_rfidnfc2usb_bridge](#usb-bridge-for-pn532-rc522-and-pn5180) | ISO 14443A (ISO 15693 not yet through the bridge) | The PN5180 has no USB of its own. Through the bridge it reads like a PN532; zmod_nfc does not use the bridge's ISO 15693 commands yet, so OpenPrintTag needs an ACR1552U or LaneTag for now. |
 | **RC522** (MFRC522) | USB through [esp32_rfidnfc2usb_bridge](#usb-bridge-for-pn532-rc522-and-pn5180) | ISO 14443A | SPI only, so it needs the bridge. Power it from 3.3 V. Cannot read ISO 15693 (OpenPrintTag). |
-| **[zmod_esp32-nfc](https://github.com/DIEHARDave/zmod_esp32-nfc)** | Wi-Fi: an ESP32 with a PN532 (I2C or HSU), an RC522 (SPI) or a PN5180 (SPI) | ISO 14443A; also ISO 15693 with a PN5180 | A reader anywhere on the network, for one or several printers. No bridge needed: the ESP32 drives the RC522 and PN5180 itself. Tested with a PN532; the RC522 and PN5180 builds are untested on hardware. See [Network readers](#network-readers). |
+| **[LaneTag](https://github.com/DIEHARDave/LaneTag)** | Wi-Fi: an ESP32 with a PN532 (I2C or HSU), an RC522 (SPI) or a PN5180 (SPI) | ISO 14443A; also ISO 15693 with a PN5180 | A reader anywhere on the network, for one or several printers. No bridge needed: the ESP32 drives the RC522 and PN5180 itself. Tested with a PN532; the RC522 and PN5180 builds are untested on hardware. See [Network readers](#network-readers). |
 
 `reader: auto` (the default) uses the first CCID reader it finds, then probes
 USB-serial adapters for a PN532 (an esp32_rfidnfc2usb_bridge answers as one,
@@ -61,7 +61,7 @@ MIPS CPU is impractical.
 
 | Format | Tag | Readers | Notes |
 |--------|-----|---------|-------|
-| [OpenPrintTag](https://specs.openprinttag.org) (Prusa) | ICODE SLIX2 (ISO 15693) | ACR1552U, PN5180 (USB or zmod_esp32-nfc) | CBOR. Remaining weight from the aux region. |
+| [OpenPrintTag](https://specs.openprinttag.org) (Prusa) | ICODE SLIX2 (ISO 15693) | ACR1552U, PN5180 (USB or LaneTag) | CBOR. Remaining weight from the aux region. |
 | [OpenSpool](https://openspool.io) | NTAG21x | all | JSON NDEF record. |
 | [OpenTag3D](https://opentag3d.info) | NTAG21x / ISO 15693 | all | Spec 2.x, and the older 0.012 layout. |
 | [TigerTag](https://tigertag.io) | NTAG21x | all | Offline ID database. |
@@ -196,7 +196,7 @@ Creator 5's `T0`..`T3` keys alike. Set `lane_data: False` to turn it off.
 
 ## Network readers
 
-[zmod_esp32-nfc](https://github.com/DIEHARDave/zmod_esp32-nfc) is an ESP32
+[LaneTag](https://github.com/DIEHARDave/LaneTag) is an ESP32
 with a PN532 (I2C or HSU), an RC522 or a PN5180 (both SPI) that reads tags
 over Wi-Fi, so one reader can serve several
 printers and does not need a USB port on the printer. It sends the **whole
