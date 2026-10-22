@@ -274,12 +274,12 @@ class ZmodNfc(object):
     def _handle_connect(self):
         # After a filament insert (AD5X IFS auto-load, Creator 5 head sensor)
         # Zmod runs RUN_ZCOLOR SLOT=<n> HIDE=1, a popup to pick the slot's
-        # colour and material. Wrap it so slots set from a tag skip it.
+        # color and material. Wrap it so slots set from a tag skip it.
         if self.skip_zmod_prompt and "RUN_ZCOLOR" in self.gcode.ready_gcode_handlers:
             self._zmod_run_zcolor = self.gcode.register_command("RUN_ZCOLOR", None)
             self.gcode.register_command(
                 "RUN_ZCOLOR", self.cmd_RUN_ZCOLOR,
-                desc="Zmod slot colour popup (skipped for slots set by zmod_nfc)")
+                desc="Zmod slot color popup (skipped for slots set by zmod_nfc)")
 
     def cmd_RUN_ZCOLOR(self, gcmd):
         if gcmd.get_int("HIDE", 0) == 1:
@@ -293,7 +293,7 @@ class ZmodNfc(object):
                 return
             assigned = self._assigned.pop(slot, None)
             if assigned is not None and self.reactor.monotonic() - assigned <= self.skip_window:
-                gcmd.respond_info("NFC: slot %d was set from its tag; skipping the colour selection" % slot)
+                gcmd.respond_info("NFC: slot %d was set from its tag; skipping the color selection" % slot)
                 return
         self._zmod_run_zcolor(gcmd)
 
@@ -635,12 +635,12 @@ class ZmodNfc(object):
         if slot_number not in slots["slots"]:
             raise self.printer.command_error("NFC: there is no slot %d" % slot_number)
         label = self._slot_label(slots, slot_number)
-        # Zmod's own colour popup for this slot's next insert is skipped.
+        # Zmod's own color popup for this slot's next insert is skipped.
         self._assigned[slot_number] = self.reactor.monotonic()
         spool = scan.spool
         afclite = self.printer.lookup_object("zmod_afclite", None)
         if spool is not None and afclite is not None:
-            # zmod_afclite tracks per-lane spools, writes the spool's colour
+            # zmod_afclite tracks per-lane spools, writes the spool's color
             # and material into Zmod and keeps Moonraker's active spool on
             # the loaded lane.
             cmd = "SET_SPOOL_ID LANE=E%d SPOOL_ID=%d" % (slot_number - 1, spool["id"])
@@ -660,14 +660,14 @@ class ZmodNfc(object):
             respond("NFC: %r is not a material this printer knows; %s keeps %s"
                     % (scan.material(), label, material or "its material"))
         color = normalize_color(scan.color()) or current["color"] or "FFFFFF"
-        # Zmod only stores its palette colours; lane_data (OrcaSlicer,
-        # HelixScreen) gets the spool's own colour.
+        # Zmod only stores its palette colors; lane_data (OrcaSlicer,
+        # HelixScreen) gets the spool's own color.
         zmod_color = color
         if slots["palette"] and color not in slots["palette"]:
             zmod_color = nearest_palette_color(color, slots["palette"])
             respond("NFC: #%s is stored as the closest palette color #%s" % (color, zmod_color))
         if self.zmod_color is not None and material:
-            # SILENT=1 keeps Zmod from opening its colour picker.
+            # SILENT=1 keeps Zmod from opening its color picker.
             run_gcode("CHANGE_ZCOLOR SLOT=%d HEX=%s TYPE=%s SILENT=1"
                             % (slot_number, zmod_color, material))
         self._write_lane_data(scan, slot_number, material, color, slots["palette"])
@@ -689,8 +689,8 @@ class ZmodNfc(object):
         info = {"material": material, "color": color, "name": scan.title(),
                 "uid": scan.uid if scan.tag.uid else ""}
         if color and palette:
-            # The palette colour Zmod gets for this one (zmod_afclite snaps
-            # the same way), so its lane_data mirror keeps the exact colour.
+            # The palette color Zmod gets for this one (zmod_afclite snaps
+            # the same way), so its lane_data mirror keeps the exact color.
             info["zmod_color"] = color if color in palette else nearest_palette_color(color, palette)
         if scan.spool is not None:
             filament = scan.spool.get("filament") or {}

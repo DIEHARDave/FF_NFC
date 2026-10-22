@@ -161,7 +161,7 @@ When Moonraker has a `[spoolman]` section:
   or nfc2klipper's `nfc_id` field.
 * Then, with `spoolman_match_filament: True` (the default), a tag with
   filament data matches the spool whose filament has the tag's vendor,
-  material and exact colour - if there is only one. This finds a Snapmaker
+  material and exact color - if there is only one. This finds a Snapmaker
   spool by its second tag, or a spool added by hand; the tag's UID is then
   recorded on it (see `bind_card_uid`).
 * An unknown tag that carries filament data can be added with the prompt's

@@ -209,7 +209,7 @@ class Acr122uMifareTest(unittest.TestCase):
         memory[16:25] = b"Snapmaker"
         memory[66] = 1              # PLA
         memory[68] = 4              # Silk
-        memory[72] = 1              # one colour
+        memory[72] = 1              # one color
         memory[80:83] = b"\x12\x34\x56"
         memory[128:130] = (175).to_bytes(2, "little")
         memory[130:132] = (500).to_bytes(2, "little")

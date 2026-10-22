@@ -350,7 +350,7 @@ class PluginTest(unittest.TestCase):
         gcode.commands["NFC_ASSIGN"](FakeGcmd(gcode, SLOT=2))
         gcode.commands["RUN_ZCOLOR"](FakeGcmd(gcode, SLOT=2, HIDE=1))
         self.assertEqual(popups, [])
-        self.assertIn("skipping the colour selection", gcode.info[-1])
+        self.assertIn("skipping the color selection", gcode.info[-1])
         # Only once: the next insert into slot 2 shows Zmod's popup again.
         gcode.commands["RUN_ZCOLOR"](FakeGcmd(gcode, SLOT=2, HIDE=1))
         self.assertEqual(len(popups), 1)

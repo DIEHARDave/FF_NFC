@@ -122,7 +122,7 @@ class EndpointTest(unittest.TestCase):
         self.assertEqual(self.gcode.scripts, ["CHANGE_ZCOLOR SLOT=2 HEX=00FF00 TYPE=PETG SILENT=1"])
         self.assertFalse([r for r in self.gcode.raw if "prompt_begin" in r])
         self.assertIsNone(self.plugin.pending)
-        # Zmod's colour popup after inserting into that slot is skipped.
+        # Zmod's color popup after inserting into that slot is skipped.
         self.assertIn(2, self.plugin._assigned)
 
     def test_fixed_slot_errors(self):
@@ -202,7 +202,7 @@ class LaneDataTest(unittest.TestCase):
         self.assertEqual(value["color"], "#6600CC")
         self.assertTrue(value["zmod_afclite"])
 
-    def test_value_notes_zmod_colour_and_time(self):
+    def test_value_notes_zmod_color_and_time(self):
         value = lane_data.lane_value({"lane": "0", "zmod_afclite_color": "#24E4A0"}, 1, {
             "material": "PLA", "color": "6600CC", "zmod_color": "48358c", "uid": "04AA",
             "scan_time": "2026-10-20T23:00:00Z"})

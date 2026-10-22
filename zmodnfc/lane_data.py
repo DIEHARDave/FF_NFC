@@ -1,6 +1,6 @@
 """Moonraker lane_data: what OrcaSlicer (and HelixScreen) read per slot.
 
-zmod_afclite mirrors each slot's colour and material into lane_data, but
+zmod_afclite mirrors each slot's color and material into lane_data, but
 not which spool is in it. After a tag assignment zmod_nfc adds the spool's
 details to the slot's entry - Spoolman spool ID, vendor, temperatures -
 keeping every other key, so afclite's and other writers' fields survive.
@@ -21,8 +21,8 @@ LOGGER = logging.getLogger("zmod_nfc")
 NAMESPACE = "lane_data"
 TIMEOUT = 10.0
 # Written at once, for HelixScreen, which re-reads lane_data 2 s after the
-# slot's firmware colour changes, and again a little after the assignment,
-# once zmod_afclite has mirrored the slot's new colour.
+# slot's firmware color changes, and again a little after the assignment,
+# once zmod_afclite has mirrored the slot's new color.
 DELAY = 5.0
 
 
@@ -86,8 +86,8 @@ def lane_value(existing, slot, info):
     value["zmod_nfc_name"] = info.get("name") or ""
     value["zmod_nfc_uid"] = info.get("uid") or ""
     if info.get("zmod_color"):
-        # zmod_afclite's note of the Zmod colour it mirrored: with Zmod's new
-        # colour already noted, it keeps this entry's exact colour.
+        # zmod_afclite's note of the Zmod color it mirrored: with Zmod's new
+        # color already noted, it keeps this entry's exact color.
         value["zmod_afclite_color"] = "#" + info["zmod_color"].lstrip("#").upper()
     if info.get("scan_time"):
         # When the spool was set, so HelixScreen can order this record

@@ -129,7 +129,7 @@ class Spoolman(object):
         return None
 
     def find_spools_by_filament(self, filament):
-        """Spools whose filament has the tag's vendor, material and colour:
+        """Spools whose filament has the tag's vendor, material and color:
         how a spool's second tag (Snapmaker spools have one on each side)
         or a tag never bound to its spool is still found."""
         if not (filament.brand and filament.material and filament.color):
@@ -170,7 +170,7 @@ class Spoolman(object):
 
     def create_spool(self, filament, uid):
         """Vendor, filament and spool for a decoded tag, reusing an existing
-        vendor and filament with the same name, material and colour."""
+        vendor and filament with the same name, material and color."""
         vendor_id = None
         if filament.brand:
             vendors = self.request("GET", "/v1/vendor", {"name": filament.brand}) or []

@@ -258,7 +258,7 @@ def decode_spoolease(tag, records, settings):
         parsed = urllib.parse.urlparse(record.uri())
         if parsed.netloc.lower() != "tag.spoolease.io" or not parsed.path.startswith("/S1"):
             continue
-        # Split on "&" only: colours are ";"-separated, and Python before
+        # Split on "&" only: colors are ";"-separated, and Python before
         # 3.8.8 (Klipper's 3.8.2 on the AD5X) also splits parse_qs on ";".
         query = {}
         for part in parsed.query.split("&"):
@@ -325,7 +325,7 @@ _TEXT_FORMAT = re.compile(
 
 
 def decode_text(tag, records, settings):
-    """Simple text tags: a material and a colour, as quick DIY tags carry
+    """Simple text tags: a material and a color, as quick DIY tags carry
     them; also a JSON object with material/type and color/color_hex keys."""
     for record in records:
         if not (record.is_text() or record.mime in ("text/plain", "application/json")):

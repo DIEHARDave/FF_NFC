@@ -98,10 +98,10 @@ class Filament(object):
         self.material = None          # base material: "PLA", "PETG-CF", ...
         self.modifiers = []           # "Silk", "Matte", "HF", ...
         self.brand = None
-        self.name = None              # product/colour name from the tag
+        self.name = None              # product/color name from the tag
         self.color = None             # "RRGGBB"
         self.alpha = 0xFF
-        self.extra_colors = []        # further "RRGGBB" for multicolour
+        self.extra_colors = []        # further "RRGGBB" for multicolor
         self.diameter = None          # mm
         self.weight = None            # g of filament on a full spool
         self.nozzle_min = None        # C
