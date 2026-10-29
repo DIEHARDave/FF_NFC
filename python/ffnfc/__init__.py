@@ -1,4 +1,4 @@
-"""zmod_nfc: NFC/RFID filament tags for Zmod printers (Flashforge AD5X and
+"""ff_nfc: NFC/RFID filament tags for Zmod printers (Flashforge AD5X and
 Creator 5).
 
 Everything in this package uses only the Python standard library and stays

@@ -13,7 +13,7 @@ from ..tag import TECH_ISO14443A
 from ..transport.serial_port import SerialError, SerialPort
 from .base import CardSession, Reader, ReaderError
 
-LOGGER = logging.getLogger("zmod_nfc")
+LOGGER = logging.getLogger("ff_nfc")
 
 _PREAMBLE = b"\x00\x00\xff"
 _ACK = b"\x00\x00\xff\x00\xff\x00"
@@ -198,7 +198,7 @@ class Pn532Reader(Reader):
         except Pn532Error as exc:
             # Usually no card; a PN532 that stopped answering is reopened.
             self._failures += 1
-            LOGGER.debug("zmod_nfc: PN532 list target: %s", exc)
+            LOGGER.debug("ff_nfc: PN532 list target: %s", exc)
             if self._failures >= MAX_FAILURES:
                 raise Pn532LinkError("PN532 on %s stopped answering" % self.path)
             return None

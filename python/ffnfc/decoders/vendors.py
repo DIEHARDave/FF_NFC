@@ -8,7 +8,7 @@ Python crypto in crypto.py.
 
 The Bambu, Creality and Snapmaker keys are built in, from their public
 write-ups (Bambu Research Group RFID guide, the Creality CFS RFID research,
-DnG-Crafts U1-RFID). Each matches the SHA-256 below; the [zmod_nfc] options
+DnG-Crafts U1-RFID). Each matches the SHA-256 below; the [ff_nfc] options
 can override them."""
 
 import datetime

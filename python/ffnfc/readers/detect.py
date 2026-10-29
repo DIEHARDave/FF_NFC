@@ -8,7 +8,7 @@ from .base import ReaderError
 from . import ccid, pn532, pn5180, rc522
 from .bridge import NoBridgeError, SerialBridge
 
-LOGGER = logging.getLogger("zmod_nfc")
+LOGGER = logging.getLogger("ff_nfc")
 
 READER_TYPES = ("auto", "pn532", "ccid", "acr1552u", "acr122u", "pn5180", "rc522")
 

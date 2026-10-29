@@ -3,10 +3,10 @@
 
 On the AD5X, over SSH:
     chroot /usr/data/.mod/.zmod python3 \\
-        /opt/config/mod_data/plugins/zmod_nfc/tools/nfc_scan.py --raw
+        /opt/config/mod_data/plugins/ff_nfc/tools/nfc_scan.py --raw
 
 Stop Klipper's use of the reader first (NFC_DISABLE is not enough: the
-plugin keeps the reader open), e.g. comment out [zmod_nfc] and restart, or
+plugin keeps the reader open), e.g. comment out [ff_nfc] and restart, or
 run this before enabling the plugin.
 """
 
@@ -17,13 +17,13 @@ import os
 import sys
 import time
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.realpath(__file__))), "python"))
 
-from zmodnfc import decoders  # noqa: E402
-from zmodnfc.readers.base import ReaderError  # noqa: E402
-from zmodnfc.readers.detect import READER_TYPES, open_reader  # noqa: E402
-from zmodnfc.transport import usbfs  # noqa: E402
-from zmodnfc.transport.serial_port import usb_serial_ports  # noqa: E402
+from ffnfc import decoders  # noqa: E402
+from ffnfc.readers.base import ReaderError  # noqa: E402
+from ffnfc.readers.detect import READER_TYPES, open_reader  # noqa: E402
+from ffnfc.transport import usbfs  # noqa: E402
+from ffnfc.transport.serial_port import usb_serial_ports  # noqa: E402
 
 
 def list_hardware():

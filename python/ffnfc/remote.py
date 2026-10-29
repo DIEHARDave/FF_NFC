@@ -1,11 +1,11 @@
 """Network readers (LaneTag): tag reads that arrive through Moonraker.
 
-zmod_nfc registers Klipper webhooks endpoints (zmod_nfc/scan, ...), which
+ff_nfc registers Klipper webhooks endpoints (ff_nfc/scan, ...), which
 Moonraker publishes on its own HTTP API and websocket - no extra port or
 server on the printer, and Moonraker's authorization applies. A reader
 sends the raw read - UID, tag kind, memory dump and, for MIFARE Classic,
 which key family opened which sector - not decoded filament data, so every
-format zmod_nfc decodes works over the network too. See docs/remote-api.md.
+format ff_nfc decodes works over the network too. See docs/remote-api.md.
 
 This module turns a request's parameters into a Tag."""
 
@@ -48,7 +48,7 @@ def _hex(data, key, default=""):
 
 
 def tag_from_json(data):
-    """A Tag from a zmod_nfc/scan request's parameters, or RemoteError."""
+    """A Tag from a ff_nfc/scan request's parameters, or RemoteError."""
     if not isinstance(data, dict):
         raise RemoteError("expected a JSON object")
     kind = data.get("kind")

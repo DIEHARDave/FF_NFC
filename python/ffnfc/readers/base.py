@@ -13,7 +13,7 @@ from ..tag import (
     TECH_ISO14443A, TECH_ISO15693, Tag, mifare_sector_layout,
 )
 
-LOGGER = logging.getLogger("zmod_nfc")
+LOGGER = logging.getLogger("ff_nfc")
 
 # Keys that open most blank or NDEF-formatted MIFARE Classic tags.
 DEFAULT_MIFARE_KEYS = [
@@ -261,13 +261,13 @@ def read_mifare_classic(session, keysets, reader_name=""):
         tag.sectors_read.add(sector)
         tag.sector_keys[sector] = opened.name
     tag.memory = bytes(memory)
-    LOGGER.debug("zmod_nfc: MIFARE Classic sectors read: %s", sorted(tag.sector_keys.items()))
+    LOGGER.debug("ff_nfc: MIFARE Classic sectors read: %s", sorted(tag.sector_keys.items()))
     if tag.incomplete:
-        LOGGER.info("zmod_nfc: tag %s left the reader after %d sectors",
+        LOGGER.info("ff_nfc: tag %s left the reader after %d sectors",
                     tag.uid_hex, len(tag.sectors_read))
     elif not tag.sectors_read:
         detail = session.describe_failure() if hasattr(session, "describe_failure") else ""
-        LOGGER.info("zmod_nfc: no MIFARE Classic sector opened with %s (%s)",
+        LOGGER.info("ff_nfc: no MIFARE Classic sector opened with %s (%s)",
                     ", ".join(k.name for k in keysets) or "the default keys", detail)
     return tag
 

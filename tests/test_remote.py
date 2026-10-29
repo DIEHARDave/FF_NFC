@@ -9,8 +9,8 @@ import unittest
 from helpers import mime_record, text_record, type2_tag
 from test_plugin import CommandError, FakeGcmd, make_plugin
 
-from zmodnfc import lane_data
-from zmodnfc.remote import RemoteError, tag_from_json
+from ffnfc import lane_data
+from ffnfc.remote import RemoteError, tag_from_json
 
 
 def scan_request(tag, **extra):
@@ -83,8 +83,8 @@ class EndpointTest(unittest.TestCase):
         self.endpoints = objects["webhooks"].endpoints
 
     def call(self, name, **params):
-        request = FakeWebRequest("zmod_nfc/" + name, params)
-        self.endpoints["zmod_nfc/" + name](request)
+        request = FakeWebRequest("ff_nfc/" + name, params)
+        self.endpoints["ff_nfc/" + name](request)
         return request.response
 
     def scan(self, tag, **extra):
@@ -98,8 +98,8 @@ class EndpointTest(unittest.TestCase):
         return self.plugin.remote_result
 
     def test_endpoints_are_registered(self):
-        self.assertEqual(sorted(self.endpoints), ["zmod_nfc/assign", "zmod_nfc/cancel",
-                                                  "zmod_nfc/info", "zmod_nfc/scan"])
+        self.assertEqual(sorted(self.endpoints), ["ff_nfc/assign", "ff_nfc/cancel",
+                                                  "ff_nfc/info", "ff_nfc/scan"])
 
     def test_scan_prompts_like_a_local_reader(self):
         result = self.scan(type2_tag(text_record("PETG:00FF00")))
@@ -155,7 +155,7 @@ class EndpointTest(unittest.TestCase):
 
     def test_info_and_cancel(self):
         info = self.call("info")
-        self.assertEqual(info["plugin"], "zmod_nfc")
+        self.assertEqual(info["plugin"], "ff_nfc")
         self.assertEqual([s["label"] for s in info["slots"]], ["Slot 1", "Slot 2", "Slot 3", "Slot 4"])
         self.scan(type2_tag(text_record("ABS:112233")))
         self.assertIsNotNone(self.call("info")["pending"])
@@ -187,7 +187,7 @@ class LaneDataTest(unittest.TestCase):
         existing = {"lane": "1", "color": "#48358C", "spool_name": "Gold", "name": "Gold",
                     "color_name": "Medium Soft Green", "helix_material": "PLA",
                     "helix_spoolman_filament_id": 39, "spoolman_vendor_id": 2,
-                    "zmod_afclite": True, "zmod_nfc_uid": "80FDF63E"}
+                    "zmod_afclite": True, "ff_nfc_uid": "80FDF63E"}
         value = lane_data.lane_value(existing, 2, {
             "material": "PLA", "color": "6600CC", "spool_id": 19, "uid": "9065F63E",
             "name": "Snapmaker PLA Matte Violet Purple", "vendor": "Snapmaker"})
@@ -212,7 +212,7 @@ class LaneDataTest(unittest.TestCase):
         self.assertNotIn("zmod_color", value)
 
     def test_same_spool_drops_vendor_written_here(self):
-        existing = {"lane": "1", "spool_id": 21, "vendor": "Sunlu", "zmod_nfc_uid": "53"}
+        existing = {"lane": "1", "spool_id": 21, "vendor": "Sunlu", "ff_nfc_uid": "53"}
         value = lane_data.lane_value(existing, 2, {
             "material": "PLA", "color": "E364CD", "spool_id": 21, "uid": "53", "vendor": "Sunlu"})
         self.assertNotIn("vendor", value)

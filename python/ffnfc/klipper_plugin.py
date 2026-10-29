@@ -1,4 +1,4 @@
-"""Klipper side of zmod_nfc: the [zmod_nfc] config section.
+"""Klipper side of ff_nfc: the [ff_nfc] config section.
 
 A worker thread owns the reader: it polls for tags, decodes them and looks
 them up in Spoolman, then hands each scan to the reactor. The reactor
@@ -15,7 +15,7 @@ printer camera instead. The camera module does that in a child process;
 its text then takes the same path as a tag's.
 
 Network readers (LaneTag) send their raw tag reads to webhooks
-endpoints that Moonraker publishes (zmod_nfc/scan, ...; remote.py); those
+endpoints that Moonraker publishes (ff_nfc/scan, ...; remote.py); those
 take the same path too.
 
 After an assignment the slot's Moonraker lane_data entry gets the spool's
@@ -42,16 +42,16 @@ from .lane_data import LaneData
 from .remote import API_VERSION, RemoteError, tag_from_json
 from .tag import KIND_QR, KIND_TYPE2, TECH_CAMERA, TECH_ISO14443A, Tag, normalize_color
 
-LOGGER = logging.getLogger("zmod_nfc")
-# The directory holding the zmodnfc package, for the camera child process.
+LOGGER = logging.getLogger("ff_nfc")
+# The directory holding the ffnfc package, for the camera child process.
 PLUGIN_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # The last camera scan's frames, to see why a label was not read.
-QR_FRAMES_DIR = "/tmp/zmod_nfc_qr"
+QR_FRAMES_DIR = "/tmp/ff_nfc_qr"
 
 SPOOLMAN_REMOTE_METHOD = "spoolman_set_active_spool"
 SLOTS_PER_IFS = 4
 UNSET_MATERIALS = ("NONE", "N/A", "?", "")
-SPOOL_VARIABLE = "zmod_nfc_slot%d_spool"
+SPOOL_VARIABLE = "ff_nfc_slot%d_spool"
 REMOTE_ENDPOINTS = ("scan", "assign", "cancel", "info")
 INSERT_POLL = 1.0
 # Larger "spool IDs" on tags are not Spoolman's (Spoolman counts from 1).
@@ -154,7 +154,7 @@ class Scan(object):
         return data
 
 
-class ZmodNfc(object):
+class FfNfc(object):
     def __init__(self, config):
         self.printer = config.get_printer()
         self.reactor = self.printer.get_reactor()
@@ -240,7 +240,7 @@ class ZmodNfc(object):
                 ("NFC_DISABLE", "Ignore scanned tags until NFC_ENABLE")):
             self.gcode.register_command(cmd, getattr(self, "cmd_" + cmd), desc=desc)
         for name in REMOTE_ENDPOINTS:
-            self.webhooks.register_endpoint("zmod_nfc/" + name, self._endpoint(name))
+            self.webhooks.register_endpoint("ff_nfc/" + name, self._endpoint(name))
         self.printer.register_event_handler("klippy:connect", self._handle_connect)
         self.printer.register_event_handler("klippy:ready", self._handle_ready)
         self.printer.register_event_handler("klippy:disconnect", self._handle_disconnect)
@@ -289,7 +289,7 @@ class ZmodNfc(object):
             self._zmod_run_zcolor = self.gcode.register_command("RUN_ZCOLOR", None)
             self.gcode.register_command(
                 "RUN_ZCOLOR", self.cmd_RUN_ZCOLOR,
-                desc="Zmod slot color popup (skipped for slots set by zmod_nfc)")
+                desc="Zmod slot color popup (skipped for slots set by ff_nfc)")
 
     def cmd_RUN_ZCOLOR(self, gcmd):
         if gcmd.get_int("HIDE", 0) == 1:
@@ -310,7 +310,7 @@ class ZmodNfc(object):
     def _handle_ready(self):
         self.zmod_color = self.printer.lookup_object("zmod_color", None)
         self._stop.clear()
-        self._thread = threading.Thread(target=self._run, name="zmod_nfc reader")
+        self._thread = threading.Thread(target=self._run, name="ff_nfc reader")
         self._thread.daemon = True
         self._thread.start()
         self._timer = self.reactor.register_timer(self._tick, self.reactor.NEVER)
@@ -350,7 +350,7 @@ class ZmodNfc(object):
                     self._stop.wait(self.retry_interval)
                     continue
                 except Exception as exc:
-                    LOGGER.exception("zmod_nfc: unexpected error opening the reader")
+                    LOGGER.exception("ff_nfc: unexpected error opening the reader")
                     self._post(self._reader_changed, "error", "", str(exc))
                     self._stop.wait(self.retry_interval)
                     continue
@@ -362,13 +362,13 @@ class ZmodNfc(object):
                     reader.forget()
                 tag = reader.poll()
             except ReaderError as exc:
-                LOGGER.warning("zmod_nfc: reader lost: %s", exc)
+                LOGGER.warning("ff_nfc: reader lost: %s", exc)
                 reader.close()
                 reader = None
                 self._post(self._reader_changed, "searching", "", str(exc))
                 continue
             except Exception:
-                LOGGER.exception("zmod_nfc: reader poll failed")
+                LOGGER.exception("ff_nfc: reader poll failed")
                 reader.close()
                 reader = None
                 self._stop.wait(self.retry_interval)
@@ -394,7 +394,7 @@ class ZmodNfc(object):
         """Decode a tag and find its spool (worker thread)."""
         filament, records = decoders.decode(tag, self.settings, self.disabled_formats)
         scan = Scan(tag, filament, records)
-        LOGGER.info("zmod_nfc: read %s -> %s", tag.describe(),
+        LOGGER.info("ff_nfc: read %s -> %s", tag.describe(),
                     filament.as_dict() if filament else "no filament data")
         if not self._spoolman_available():
             scan.spoolman_note = "" if not self.use_spoolman else "Spoolman not configured"
@@ -408,7 +408,7 @@ class ZmodNfc(object):
                 try:
                     scan.spool = self.spoolman.get_spool(spool_id)
                 except SpoolmanError as exc:
-                    LOGGER.info("zmod_nfc: tag spool ID %s: %s", spool_id, exc)
+                    LOGGER.info("ff_nfc: tag spool ID %s: %s", spool_id, exc)
             # QR codes have no UID to look up.
             if scan.spool is None and tag.uid:
                 scan.spool = self.spoolman.find_spool_by_uid(tag.uid_hex)
@@ -430,7 +430,7 @@ class ZmodNfc(object):
                 scan.spoolman_note = "not in Spoolman"
         except SpoolmanError as exc:
             scan.spoolman_note = str(exc)
-            LOGGER.warning("zmod_nfc: %s", exc)
+            LOGGER.warning("ff_nfc: %s", exc)
         return scan
 
     # Reactor side ---------------------------------------------------------
@@ -445,7 +445,7 @@ class ZmodNfc(object):
         elif previous == "connected":
             self.gcode.respond_info("NFC: reader disconnected (%s)" % error)
         else:
-            LOGGER.info("zmod_nfc: %s", error)
+            LOGGER.info("ff_nfc: %s", error)
 
     def _printing(self):
         stats = self.printer.lookup_object("print_stats", None)
@@ -742,15 +742,15 @@ class ZmodNfc(object):
         try:
             self.webhooks.call_remote_method(SPOOLMAN_REMOTE_METHOD, spool_id=spool_id)
         except Exception as exc:
-            LOGGER.info("zmod_nfc: could not set the active spool: %s", exc)
+            LOGGER.info("ff_nfc: could not set the active spool: %s", exc)
 
     def _in_background(self, fn, *args):
         def run():
             try:
                 fn(*args)
             except SpoolmanError as exc:
-                LOGGER.warning("zmod_nfc: %s", exc)
-        thread = threading.Thread(target=run, name="zmod_nfc spoolman")
+                LOGGER.warning("ff_nfc: %s", exc)
+        thread = threading.Thread(target=run, name="ff_nfc spoolman")
         thread.daemon = True
         thread.start()
 
@@ -766,7 +766,7 @@ class ZmodNfc(object):
                 result = (None, exc)
             self.reactor.async_complete(completion, result)
 
-        thread = threading.Thread(target=run, name="zmod_nfc spoolman")
+        thread = threading.Thread(target=run, name="ff_nfc spoolman")
         thread.daemon = True
         thread.start()
         result, error = completion.wait(self.reactor.monotonic() + 40.,
@@ -890,7 +890,7 @@ class ZmodNfc(object):
         if self._printing() and not self.scan_while_printing:
             raise gcmd.error("NFC: QR scanning is off while printing (scan_while_printing)")
         seconds = gcmd.get_float("TIME", self.qr_scan_time, minval=1., maxval=120.)
-        command = [sys.executable, "-m", "zmodnfc.camera", "--url", self.qr_url,
+        command = [sys.executable, "-m", "ffnfc.camera", "--url", self.qr_url,
                    "--time", "%g" % seconds, "--width", str(self.qr_width), "--nice", "19",
                    "--verbose", "--save-dir", QR_FRAMES_DIR,
                    "--decoder", self.qr_decoder, "--chroot", self.qr_chroot]
@@ -912,7 +912,7 @@ class ZmodNfc(object):
         self._qr_prompt = True
         gcmd.respond_info("NFC: looking for a QR label for %d s" % seconds)
         thread = threading.Thread(target=self._qr_wait, args=(process, seconds),
-                                  name="zmod_nfc camera")
+                                  name="ff_nfc camera")
         thread.daemon = True
         thread.start()
 
@@ -933,10 +933,10 @@ class ZmodNfc(object):
                 continue
         for line in err.decode("utf-8", "replace").splitlines():
             if line.startswith(("frame ", "decoder: ")):
-                LOGGER.info("zmod_nfc: camera %s", line)
+                LOGGER.info("ff_nfc: camera %s", line)
         if not result:
             message = err.decode("utf-8", "replace").strip().splitlines()
-            LOGGER.warning("zmod_nfc: camera scan failed: %s", err.decode("utf-8", "replace"))
+            LOGGER.warning("ff_nfc: camera scan failed: %s", err.decode("utf-8", "replace"))
             result = {"error": "camera scan failed%s" % (": " + message[-1] if message else "")}
         scan = None
         if "text" in result:
@@ -998,7 +998,7 @@ class ZmodNfc(object):
     # Network readers ----------------------------------------------------
     #
     # Klipper webhooks endpoints, which Moonraker publishes as
-    # http://<printer>:7125/printer/zmod_nfc/<name>. Handlers run on the reactor and
+    # http://<printer>:7125/printer/ff_nfc/<name>. Handlers run on the reactor and
     # must answer at once; an exception other than command_error would shut
     # Klipper down.
 
@@ -1011,7 +1011,7 @@ class ZmodNfc(object):
             except self.printer.command_error:
                 raise
             except Exception as exc:
-                LOGGER.exception("zmod_nfc: zmod_nfc/%s failed", name)
+                LOGGER.exception("ff_nfc: ff_nfc/%s failed", name)
                 raise self.printer.command_error("NFC: %s" % exc)
             web_request.send(result)
         return run
@@ -1026,7 +1026,7 @@ class ZmodNfc(object):
         }
 
     def _ep_info(self, web_request):
-        data = {"plugin": "zmod_nfc", "api": API_VERSION, "enabled": self.enabled,
+        data = {"plugin": "ff_nfc", "api": API_VERSION, "enabled": self.enabled,
                 "printing": self._printing(), "remote": self.remote_result,
                 "pending": self.pending.summary() if self.pending is not None else None}
         data.update(self._slots_summary())
@@ -1035,7 +1035,7 @@ class ZmodNfc(object):
     def _ep_scan(self, web_request):
         """A tag read by a network reader. Decoding and the Spoolman lookup
         run on a thread, like a USB reader's; the outcome appears as
-        printer.zmod_nfc.remote under the returned id."""
+        printer.ff_nfc.remote under the returned id."""
         try:
             tag = tag_from_json(web_request.params)
         except RemoteError as exc:
@@ -1047,17 +1047,17 @@ class ZmodNfc(object):
         if tag.incomplete:
             return {"accepted": False, "outcome": "incomplete"}
         scan_id = os.urandom(4).hex()
-        LOGGER.info("zmod_nfc: tag %s from %s (%s)", tag.uid_hex, tag.reader, scan_id)
+        LOGGER.info("ff_nfc: tag %s from %s (%s)", tag.uid_hex, tag.reader, scan_id)
 
         def run():
             try:
                 scan = self._process(tag)
             except Exception as exc:
-                LOGGER.exception("zmod_nfc: network scan failed")
+                LOGGER.exception("ff_nfc: network scan failed")
                 self._post(self._remote_failed, scan_id, str(exc))
                 return
             self._post(self._remote_done, scan_id, scan, slot)
-        thread = threading.Thread(target=run, name="zmod_nfc network scan")
+        thread = threading.Thread(target=run, name="ff_nfc network scan")
         thread.daemon = True
         thread.start()
         return {"accepted": True, "id": scan_id}
@@ -1101,5 +1101,5 @@ class ZmodNfc(object):
         }
 
 
-def load_config(config):
-    return ZmodNfc(config)
+def load_config(config, platform="zmod"):
+    return FfNfc(config)

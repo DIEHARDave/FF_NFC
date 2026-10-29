@@ -15,7 +15,7 @@ from ..tag import TECH_ISO14443A, TECH_ISO15693
 from .base import CardSession, Reader
 from .bridge import BridgeError, SerialBridge  # noqa: F401  (SerialBridge for callers)
 
-LOGGER = logging.getLogger("zmod_nfc")
+LOGGER = logging.getLogger("ff_nfc")
 
 # Host interface commands.
 CMD_WRITE_REGISTER = 0x00

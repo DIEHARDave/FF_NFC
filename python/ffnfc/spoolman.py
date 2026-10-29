@@ -21,7 +21,7 @@ CARD_UIDS_FIELD_DEFINITION = {
     "default_value": json.dumps(""),
 }
 TIMEOUT = 30.0
-LOGGER = logging.getLogger("zmod_nfc")
+LOGGER = logging.getLogger("ff_nfc")
 
 DENSITY = {
     "PLA": 1.24, "PETG": 1.27, "ABS": 1.04, "ASA": 1.07, "TPU": 1.21,
@@ -164,7 +164,7 @@ class Spoolman(object):
         try:
             self.request("POST", "/v1/spool/%d/tag" % spool["id"], body={"uid": uid})
         except SpoolmanError as exc:
-            LOGGER.info("zmod_nfc: tag %s not linked to spool %s: %s", uid, spool["id"], exc)
+            LOGGER.info("ff_nfc: tag %s not linked to spool %s: %s", uid, spool["id"], exc)
 
     def bind_uid(self, spool, uid):
         """Add uid to the spool's card_uids, removing it from other spools,

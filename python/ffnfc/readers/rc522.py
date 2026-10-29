@@ -18,7 +18,7 @@ from ..tag import TECH_ISO14443A
 from .base import CardSession, Reader
 from .bridge import BridgeError
 
-LOGGER = logging.getLogger("zmod_nfc")
+LOGGER = logging.getLogger("ff_nfc")
 
 # Registers.
 REG_COMMAND = 0x01

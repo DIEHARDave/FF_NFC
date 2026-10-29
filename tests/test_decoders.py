@@ -7,9 +7,9 @@ import unittest
 from helpers import (long_mime_record, mime_record, text_record, tlv, type2_tag,
                      uri_record)
 
-from zmodnfc import decoders
-from zmodnfc.decoders import cbor, crypto, ndef, vendors
-from zmodnfc.tag import Tag
+from ffnfc import decoders
+from ffnfc.decoders import cbor, crypto, ndef, vendors
+from ffnfc.tag import Tag
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 

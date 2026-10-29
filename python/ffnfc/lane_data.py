@@ -1,7 +1,7 @@
 """Moonraker lane_data: what OrcaSlicer (and HelixScreen) read per slot.
 
 zmod_afclite mirrors each slot's color and material into lane_data, but
-not which spool is in it. After a tag assignment zmod_nfc adds the spool's
+not which spool is in it. After a tag assignment ff_nfc adds the spool's
 details to the slot's entry - Spoolman spool ID, vendor, temperatures -
 keeping every other key, so afclite's and other writers' fields survive.
 
@@ -16,7 +16,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-LOGGER = logging.getLogger("zmod_nfc")
+LOGGER = logging.getLogger("ff_nfc")
 
 NAMESPACE = "lane_data"
 TIMEOUT = 10.0
@@ -48,7 +48,7 @@ SPOOL_KEYS = ("name", "spool_name", "vendor", "color_name", "spoolman_vendor_id"
 def same_spool(existing, info):
     if existing.get("spool_id") and info.get("spool_id"):
         return existing["spool_id"] == info["spool_id"]
-    return bool(info.get("uid")) and existing.get("zmod_nfc_uid") == info["uid"]
+    return bool(info.get("uid")) and existing.get("ff_nfc_uid") == info["uid"]
 
 
 def lane_value(existing, slot, info):
@@ -83,8 +83,8 @@ def lane_value(existing, slot, info):
         value["vendor_name"] = info["vendor"]
     else:
         value.pop("vendor_name", None)
-    value["zmod_nfc_name"] = info.get("name") or ""
-    value["zmod_nfc_uid"] = info.get("uid") or ""
+    value["ff_nfc_name"] = info.get("name") or ""
+    value["ff_nfc_uid"] = info.get("uid") or ""
     if info.get("zmod_color"):
         # zmod_afclite's note of the Zmod color it mirrored: with Zmod's new
         # color already noted, it keeps this entry's exact color.
@@ -137,9 +137,9 @@ class LaneData(object):
         def run():
             try:
                 key = self.write(slot, info)
-                LOGGER.info("zmod_nfc: lane_data %s set for slot %d", key, slot)
+                LOGGER.info("ff_nfc: lane_data %s set for slot %d", key, slot)
             except (urllib.error.URLError, OSError, ValueError) as exc:
-                LOGGER.warning("zmod_nfc: could not write lane_data for slot %d: %s", slot, exc)
+                LOGGER.warning("ff_nfc: could not write lane_data for slot %d: %s", slot, exc)
         timers = [threading.Timer(0, run), threading.Timer(delay, run)]
         for timer in timers:
             timer.daemon = True

@@ -3,10 +3,10 @@ import unittest
 
 import helpers  # noqa: F401  (sets sys.path)
 
-from zmodnfc.readers import base, ccid, pn532, rc522
-from zmodnfc.readers.base import KeySet
-from zmodnfc.tag import KIND_MIFARE_CLASSIC, KIND_TYPE2
-from zmodnfc.transport import usbfs
+from ffnfc.readers import base, ccid, pn532, rc522
+from ffnfc.readers.base import KeySet
+from ffnfc.tag import KIND_MIFARE_CLASSIC, KIND_TYPE2
+from ffnfc.transport import usbfs
 
 
 class FakeCard(base.CardSession):
@@ -143,7 +143,7 @@ class FakeAcr122uSlot(object):
 class Acr122uTest(unittest.TestCase):
     def test_ntag216_beyond_page_44(self):
         from helpers import mime_record, type2_tag
-        from zmodnfc import decoders
+        from ffnfc import decoders
         payload = (b'{"protocol":"openspool","version":"1.0","brand":"SUNLU","type":"PLA",'
                    b'"color_hex":"0022FF","min_temp":"190","max_temp":"230",'
                    b'"bed_min_temp":"50","bed_max_temp":"60"}')
@@ -201,8 +201,8 @@ class FakeAcr122uMifare(object):
 
 class Acr122uMifareTest(unittest.TestCase):
     def test_snapmaker_tag_through_pn532(self):
-        from zmodnfc import decoders
-        from zmodnfc.decoders import vendors
+        from ffnfc import decoders
+        from ffnfc.decoders import vendors
         uid = bytes.fromhex("012772F0")
         keyset = vendors.snapmaker_keysets(uid, {})[0]
         memory = bytearray(1024)
@@ -269,7 +269,7 @@ class FakeAcr122uReaderSlot(FakeAcr122uMifare):
 
 class Acr122uBeepTest(unittest.TestCase):
     def reader(self, leave_after=None):
-        from zmodnfc import decoders
+        from ffnfc import decoders
         uid = bytes.fromhex("40F7EA3E")
         keyset = decoders.mifare_keysets(uid, {})
         snapmaker = [k for k in keyset if k.name == "Snapmaker"][0]
@@ -472,7 +472,7 @@ class Rc522Test(unittest.TestCase):
 
     def test_reads_ntag(self):
         from helpers import mime_record, type2_tag
-        from zmodnfc import decoders
+        from ffnfc import decoders
         payload = (b'{"protocol":"openspool","version":"1.0","brand":"SUNLU","type":"PLA",'
                    b'"color_hex":"0022FF","min_temp":"190","max_temp":"230"}')
         image = type2_tag(mime_record("application/json", payload), uid=self.UID).memory

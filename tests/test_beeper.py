@@ -6,7 +6,8 @@ import stat
 import tempfile
 import unittest
 
-from zmodnfc import beeper
+import helpers  # noqa: F401  (puts the plugin on sys.path)
+from ffnfc import beeper
 
 FAKE_CMD_PWM = """#!/bin/sh
 echo "$@" >> "%s"

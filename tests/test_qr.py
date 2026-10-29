@@ -12,10 +12,10 @@ import unittest
 
 import helpers  # noqa: F401  (puts the plugin on sys.path)
 
-from zmodnfc import camera, qr
-from zmodnfc.decoders import decode
-from zmodnfc.decoders.ndef import text_records
-from zmodnfc.tag import KIND_QR, TECH_CAMERA, Tag
+from ffnfc import camera, qr
+from ffnfc.decoders import decode
+from ffnfc.decoders.ndef import text_records
+from ffnfc.tag import KIND_QR, TECH_CAMERA, Tag
 
 VECTORS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "vectors", "qr", "codes.json")
 

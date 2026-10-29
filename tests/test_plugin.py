@@ -6,7 +6,7 @@ import unittest
 
 from helpers import text_record, type2_tag
 
-from zmodnfc import klipper_plugin
+from ffnfc import klipper_plugin
 
 
 class CommandError(Exception):
@@ -177,7 +177,7 @@ def make_plugin(options=None, tools=1, palette=None, afclite=False):
     printer = FakePrinter(objects)
     # No lane_data writes to a Moonraker that is not there.
     options = dict({"lane_data": False}, **(options or {}))
-    plugin = klipper_plugin.ZmodNfc(FakeConfig(printer, options))
+    plugin = klipper_plugin.FfNfc(FakeConfig(printer, options))
     plugin.zmod_color = objects["zmod_color"]
     return plugin, gcode, objects
 
@@ -236,7 +236,7 @@ class PluginTest(unittest.TestCase):
         gcode.commands["NFC_ASSIGN"](FakeGcmd(gcode, SLOT=1))
         self.assertEqual(gcode.in_command, [
             "CHANGE_ZCOLOR SLOT=1 HEX=445566 TYPE=PETG SILENT=1",
-            "SAVE_VARIABLE VARIABLE=zmod_nfc_slot1_spool VALUE=8"])
+            "SAVE_VARIABLE VARIABLE=ff_nfc_slot1_spool VALUE=8"])
         self.assertEqual(objects["webhooks"].calls, [("spoolman_set_active_spool", {"spool_id": 8})])
 
     def test_creator5_palette_and_labels(self):
@@ -315,7 +315,7 @@ class PluginTest(unittest.TestCase):
                 return spools
 
         fake = FakeSpoolman()
-        from zmodnfc.spoolman import Spoolman
+        from ffnfc.spoolman import Spoolman
         fake.find_spools_by_filament = lambda f: Spoolman.find_spools_by_filament(fake, f)
         plugin.spoolman = fake
         payload = b'{"protocol":"openspool","brand":"Snapmaker","type":"PLA","color_hex":"6600CC"}'
@@ -338,12 +338,12 @@ class PluginTest(unittest.TestCase):
         self.assertIn("2 spools match", scan.spoolman_note)
 
     def test_native_spoolman_tag_matches(self):
-        from zmodnfc.spoolman import spool_uids
+        from ffnfc.spoolman import spool_uids
         spool = {"id": 76, "extra": {}, "tags": [{"uid": "531c89bc520001", "added": "2026-10-27T20:45:35Z"}]}
         self.assertEqual(spool_uids(spool), ["531C89BC520001"])
 
     def test_bind_links_native_tag_and_card_uids(self):
-        from zmodnfc.spoolman import Spoolman, SpoolmanError
+        from ffnfc.spoolman import Spoolman, SpoolmanError
         calls = []
 
         class Fake(Spoolman):
@@ -407,7 +407,7 @@ class PluginTest(unittest.TestCase):
         self.assertEqual(len(popups), 2)
 
     def test_spool_title_drops_repeated_words(self):
-        from zmodnfc.spoolman import spool_title
+        from ffnfc.spoolman import spool_title
         spool = {"id": 15, "filament": {"vendor": {"name": "Snapmaker"}, "material": "PLA",
                                         "name": "PLA SnapSpeed"}}
         self.assertEqual(spool_title(spool), "Snapmaker PLA SnapSpeed")
@@ -554,7 +554,7 @@ class QrScanTest(unittest.TestCase):
         finally:
             klipper_plugin.subprocess.Popen = original
         command, kw = started[0]
-        self.assertEqual(command[1:3], ["-m", "zmodnfc.camera"])
+        self.assertEqual(command[1:3], ["-m", "ffnfc.camera"])
         self.assertIn("/opt/ffmpeg", command)
         self.assertEqual(command[command.index("--time") + 1], "8")
         self.assertEqual(kw["cwd"], klipper_plugin.PLUGIN_DIR)

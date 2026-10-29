@@ -1,4 +1,4 @@
-# zmod_nfc
+# ff_nfc
 
 NFC/RFID filament tags and **Spoolman QR labels** for **Zmod** on the
 **Flashforge AD5X** (four-slot IFS) and the **Flashforge Creator 5** (four
@@ -43,8 +43,8 @@ QR label ──► camera ──► decode (Spoolman label, OpenSpool, text) ─
 | **ACR122U** | USB (CCID) | ISO 14443A | Tested. MIFARE Classic is read through its internal PN532. |
 | Other PC/SC readers: ACR1252U, ACR1255U, Identiv, ... | USB (CCID) | depends on the reader | Same driver: any reader with the PC/SC Part 3 storage-card commands. |
 | **PN532** | USB-serial adapter (CH340, CP210x, PL2303, FTDI) | ISO 14443A | Tested with an all-in-one USB-C "PN532 V2.0" board (CH340E, HSU wired in). On other boards, set **HSU/UART** mode (both switches off on the common red and blue boards). Cannot read ISO 15693 (OpenPrintTag). |
-| **[esp32_rfidnfc2usb_bridge](https://github.com/DIEHARDave/esp32_rfidnfc2usb_bridge)** | USB: an ESP32 with a PN532 (I2C or UART), an RC522 or a PN5180 (both SPI), which zmod_nfc sees as a PN532 | ISO 14443A | One small board for any of the three chips; no setting needed (`reader: auto` or `pn532`). Tested with a PN532 on an ESP32-C3 on an AD5X; RC522 and PN5180 untested on hardware. See [USB bridge for PN532, RC522 and PN5180](#usb-bridge-for-pn532-rc522-and-pn5180). |
-| **PN5180** | USB through [esp32_rfidnfc2usb_bridge](#usb-bridge-for-pn532-rc522-and-pn5180) | ISO 14443A (ISO 15693 not yet through the bridge) | The PN5180 has no USB of its own. Through the bridge it reads like a PN532; zmod_nfc does not use the bridge's ISO 15693 commands yet, so OpenPrintTag needs an ACR1552U or LaneTag for now. |
+| **[esp32_rfidnfc2usb_bridge](https://github.com/DIEHARDave/esp32_rfidnfc2usb_bridge)** | USB: an ESP32 with a PN532 (I2C or UART), an RC522 or a PN5180 (both SPI), which ff_nfc sees as a PN532 | ISO 14443A | One small board for any of the three chips; no setting needed (`reader: auto` or `pn532`). Tested with a PN532 on an ESP32-C3 on an AD5X; RC522 and PN5180 untested on hardware. See [USB bridge for PN532, RC522 and PN5180](#usb-bridge-for-pn532-rc522-and-pn5180). |
+| **PN5180** | USB through [esp32_rfidnfc2usb_bridge](#usb-bridge-for-pn532-rc522-and-pn5180) | ISO 14443A (ISO 15693 not yet through the bridge) | The PN5180 has no USB of its own. Through the bridge it reads like a PN532; ff_nfc does not use the bridge's ISO 15693 commands yet, so OpenPrintTag needs an ACR1552U or LaneTag for now. |
 | **RC522** (MFRC522) | USB through [esp32_rfidnfc2usb_bridge](#usb-bridge-for-pn532-rc522-and-pn5180) | ISO 14443A | SPI only, so it needs the bridge. Power it from 3.3 V. Cannot read ISO 15693 (OpenPrintTag). |
 | **[LaneTag](https://github.com/DIEHARDave/LaneTag)** | Wi-Fi: an ESP32 with a PN532 (I2C or HSU), an RC522 (SPI) or a PN5180 (SPI) | ISO 14443A; also ISO 15693 with a PN5180 | A reader anywhere on the network, for one or several printers. No bridge needed: the ESP32 drives the RC522 and PN5180 itself. Tested with a PN532; the RC522 and PN5180 builds are untested on hardware. See [Network readers](#network-readers). |
 
@@ -89,34 +89,34 @@ override is checked against the key's known SHA-256 at startup.
 ## Install
 
 1. Add the section in
-   [`zmod_nfc.moonraker.conf.example`](zmod_nfc.moonraker.conf.example) to
+   [`ff_nfc.moonraker.conf.example`](ff_nfc.moonraker.conf.example) to
    `mod_data/user.moonraker.conf`, then restart Moonraker. Moonraker's update
    manager now keeps the plugin up to date.
 2. Run:
 
    ```gcode
-   ENABLE_PLUGIN name=zmod_nfc
+   ENABLE_PLUGIN name=ff_nfc
    ```
 
-Zmod clones the repository into `mod_data/plugins/zmod_nfc` and runs
-`install.sh`, which links `zmod_nfc.py` into Klipper's extras directory
+Zmod clones the repository into `mod_data/plugins/ff_nfc` and runs
+`install.sh`, which links `ff_nfc.py` into Klipper's extras directory
 (native Klipper and Klipper 13). Zmod then restarts Klipper. The plugin works
 with its defaults.
 
-To remove it, run `DISABLE_PLUGIN name=zmod_nfc`.
+To remove it, run `DISABLE_PLUGIN name=ff_nfc`.
 
 ## Configuration
 
-Zmod includes [`zmod_nfc.cfg`](zmod_nfc.cfg), which lists every option.
+Zmod includes [`ff_nfc.cfg`](ff_nfc.cfg), which lists every option.
 Plugin updates replace that file, so put your settings in `mod_data/user.cfg`:
 
 ```ini
-[zmod_nfc]
+[ff_nfc]
 prompt_timeout: 90
 spoolman_auto_create: True
 ```
 
-Klipper merges both `[zmod_nfc]` sections, and yours wins. The QR label
+Klipper merges both `[ff_nfc]` sections, and yours wins. The QR label
 options start with `qr_`; see [Spoolman QR labels](#spoolman-qr-labels).
 
 ## Using it
@@ -143,8 +143,8 @@ The same spool after adding it, now matched to Spoolman spool 15:
 
 Zmod normally asks for the color and material after you insert filament
 (after the AD5X IFS loads it, or when a Creator 5 head sensor sees it). For a
-slot set from a tag, zmod_nfc skips that popup. If the tag's prompt is still
-open when the popup would appear, zmod_nfc assigns the spool to that slot
+slot set from a tag, ff_nfc skips that popup. If the tag's prompt is still
+open when the popup would appear, ff_nfc assigns the spool to that slot
 instead. Set `skip_zmod_color_prompt: False` to keep Zmod's popup.
 
 Tags are ignored, and QR scanning is off, while printing unless
@@ -180,7 +180,7 @@ When Moonraker has a `[spoolman]` section:
 
 If **zmod_afclite** is installed, assigning a Spoolman spool goes through its
 `SET_SPOOL_ID`. Each IFS lane then tracks its own spool, and Moonraker's
-active spool follows whichever lane is loaded. Without zmod_afclite, zmod_nfc
+active spool follows whichever lane is loaded. Without zmod_afclite, ff_nfc
 writes the color and material itself, saves the spool ID per slot in
 `save_variables`, and sets the active spool when the slot is the one loaded.
 
@@ -194,7 +194,7 @@ Without Spoolman, only the tag's material and color are used.
 
 ### Lane data for OrcaSlicer
 
-After an assignment, zmod_nfc adds the spool's details to the slot's entry
+After an assignment, ff_nfc adds the spool's details to the slot's entry
 in Moonraker's `lane_data` (which OrcaSlicer reads): material, color,
 Spoolman `spool_id`, vendor and nozzle and bed temperatures. Other keys in
 the entry, such as zmod_afclite's, are kept. The entry is found by its
@@ -208,15 +208,15 @@ with a PN532 (I2C or HSU), an RC522 or a PN5180 (both SPI) that reads tags
 over Wi-Fi, so one reader can serve several
 printers and does not need a USB port on the printer. It sends the **whole
 tag read** (UID, memory dump, which MIFARE keys opened which sector) to
-zmod_nfc, which treats it exactly like a tag on a USB reader: every format
+ff_nfc, which treats it exactly like a tag on a USB reader: every format
 is decoded here, the spool is looked up in Spoolman, the slot prompt appears
 on the printer's screen, inserting filament picks the slot, and lane data is
 filled in. The ESP32's web page can also pick the slot, or a reader can be
 fixed to one slot (one reader per IFS slot or toolhead): its scans then go
 straight into that slot, without the prompt.
 
-Readers talk to zmod_nfc **through Moonraker** (port 7125): zmod_nfc
-registers Klipper endpoints (`zmod_nfc/scan`, ...) that Moonraker publishes
+Readers talk to ff_nfc **through Moonraker** (port 7125): ff_nfc
+registers Klipper endpoints (`ff_nfc/scan`, ...) that Moonraker publishes
 on its HTTP API. There is no extra port or server on the printer, and
 Moonraker's authorization applies (a reader outside `trusted_clients` needs
 an API key). The protocol is in [docs/remote-api.md](docs/remote-api.md).
@@ -226,7 +226,7 @@ an API key). The protocol is in [docs/remote-api.md](docs/remote-api.md).
 [esp32_rfidnfc2usb_bridge](https://github.com/DIEHARDave/esp32_rfidnfc2usb_bridge)
 is ESP32 firmware that puts a PN532, an RC522 or a PN5180 on the printer's
 USB port. The printer sees **a PN532 on a USB serial port** whichever chip is
-fitted, so zmod_nfc uses its PN532 driver for all three. There is nothing to
+fitted, so ff_nfc uses its PN532 driver for all three. There is nothing to
 configure here: `reader: auto` (the default) finds the bridge, as does
 `reader: pn532`.
 
@@ -239,7 +239,7 @@ configure here: `reader: auto` (the default) finds the bridge, as does
   ESP32 boards use their CP210x or CH340 chip (`/dev/ttyUSB0`).
 
 The bridge also reads ISO 15693 tags (OpenPrintTag) on a PN5180 through
-commands of its own, but zmod_nfc does not use them yet. Wiring, pins and
+commands of its own, but ff_nfc does not use them yet. Wiring, pins and
 flashing are in the bridge's README.
 
 **Status:** a PN532 on I2C through an ESP32-C3 bridge was found and read on
@@ -247,13 +247,13 @@ an AD5X, and on a PC this driver decoded an OpenSpool NTAG216 through it. The
 RC522 and PN5180 through the bridge have not been run on hardware yet.
 
 (The thin SPI bridge protocol in [docs/pn5180-bridge.md](docs/pn5180-bridge.md),
-where zmod_nfc's own PN5180 and RC522 drivers do the chip work, has no
+where ff_nfc's own PN5180 and RC522 drivers do the chip work, has no
 firmware. The esp32_rfidnfc2usb_bridge covers the same chips.)
 
 ## Spoolman QR labels
 
 [Spoolman](https://github.com/Donkie/Spoolman) prints a QR code label for
-each spool. zmod_nfc reads those labels with the printer's camera, so a
+each spool. ff_nfc reads those labels with the printer's camera, so a
 spool with a Spoolman label can be loaded without an NFC reader or tag.
 
 ### Printing labels
@@ -268,7 +268,7 @@ QR code labels. Either QR content works:
 
 These are **spool** labels. Spoolman can also print **filament** labels
 (`WEB+SPOOLMAN:F-<id>`, `.../filament/show/<id>`); those name a filament, not
-a spool, so zmod_nfc does not use them to set a slot.
+a spool, so ff_nfc does not use them to set a slot.
 
 Print the code large enough for the camera. Each of its small squares needs
 about 2 to 3 camera pixels, so a bigger code reads from further away, and
@@ -323,18 +323,18 @@ These work without Spoolman. Codes up to version 10 (271 bytes) are read.
 
 ### If a label is not read
 
-* Each scan keeps its camera frames in `/tmp/zmod_nfc_qr/` on the printer.
+* Each scan keeps its camera frames in `/tmp/ff_nfc_qr/` on the printer.
   Look at them to see what the camera saw: often the label is too small, out
   of the picture, blurred by movement, or washed out by glare.
-* The Klipper log has the time each frame took (`zmod_nfc: camera frame ...`).
+* The Klipper log has the time each frame took (`ff_nfc: camera frame ...`).
 * After a scan, `NFC_DUMP` shows the QR code's text.
 * A saved frame can be tried again by hand, over SSH (AD5X and Creator 5):
 
   ```sh
-  cd /opt/config/mod_data/plugins/zmod_nfc
+  cd /opt/config/mod_data/plugins/ff_nfc
   LD_LIBRARY_PATH=/usr/prog/Python-3.8.2/lib:/usr/prog/openssl-1.0.2d/lib \
-    /usr/prog/Python-3.8.2/bin/python3 -m zmodnfc.camera \
-    --image /tmp/zmod_nfc_qr/frame01.jpg --verbose
+    /usr/prog/Python-3.8.2/bin/python3 -m ffnfc.camera \
+    --image /tmp/ff_nfc_qr/frame01.jpg --verbose
   ```
 
   It prints the code's text, e.g. `{"frames": 1, "text": "WEB+SPOOLMAN:S-5"}`,
@@ -342,12 +342,12 @@ These work without Spoolman. Codes up to version 10 (271 bytes) are read.
 
 ### How it works
 
-`NFC_QR_SCAN` starts a low-priority child process (`zmodnfc/camera.py`), so
+`NFC_QR_SCAN` starts a low-priority child process (`ffnfc/camera.py`), so
 Klipper itself does none of the image work. It fetches snapshots from Zmod's
 camera streamer, turns each into a grayscale frame with libturbojpeg in
 Zmod's chroot (or with the firmware's ffmpeg where its build can; the
 Creator 5's cannot), and decodes it with a QR reader written in pure Python
-(`zmodnfc/qr.py`). The reader copes with labels that are turned, tilted, or
+(`ffnfc/qr.py`). The reader copes with labels that are turned, tilted, or
 foreshortened to a third of their height, as a label lying on the bed looks
 to the Creator 5's low camera. The text it finds then takes the same path as
 an NFC tag's: the decoders, the Spoolman lookup and the slot prompt.
@@ -368,7 +368,7 @@ an NFC tag's: the decoders, the Spoolman lookup and the slot prompt.
 | `NFC_QR_CANCEL` | Stop looking for a QR label. |
 | `NFC_ENABLE` / `NFC_DISABLE` | Resume or ignore scans. |
 
-`printer.zmod_nfc` reports `state`, `reader`, `pending`, `qr_scanning`,
+`printer.ff_nfc` reports `state`, `reader`, `pending`, `qr_scanning`,
 `remote` (the outcome of the last network reader scan) and the `last` scan (UID, format, material, color, spool ID) for macros and other
 clients. A QR scan has an empty UID.
 
@@ -380,8 +380,8 @@ before `ENABLE_PLUGIN`:
 
 ```sh
 # AD5X, over SSH
-chroot /usr/data/.mod/.zmod python3 /opt/config/mod_data/plugins/zmod_nfc/tools/nfc_scan.py --list
-chroot /usr/data/.mod/.zmod python3 /opt/config/mod_data/plugins/zmod_nfc/tools/nfc_scan.py --raw
+chroot /usr/data/.mod/.zmod python3 /opt/config/mod_data/plugins/ff_nfc/tools/nfc_scan.py --list
+chroot /usr/data/.mod/.zmod python3 /opt/config/mod_data/plugins/ff_nfc/tools/nfc_scan.py --raw
 ```
 
 ## Reporting a tag
@@ -421,7 +421,7 @@ the tests themselves do not.
   The test vectors in `tests/vectors/openprinttag` are MIT licensed; see the
   LICENSE file there.
 * [Spoolman](https://github.com/Donkie/Spoolman) by Donkie, whose QR labels
-  zmod_nfc reads. The QR reader in `zmodnfc/qr.py` is written from the QR code
+  ff_nfc reads. The QR reader in `ffnfc/qr.py` is written from the QR code
   standard (ISO/IEC 18004) and follows the detector design ZXing made common.
   Its reference codes were made with [segno](https://github.com/heuer/segno).
 * [nfc2klipper](https://github.com/bofh69/nfc2klipper) and

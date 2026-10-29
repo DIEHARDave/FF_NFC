@@ -15,7 +15,7 @@ from ..tag import TECH_ISO14443A, TECH_ISO15693
 from ..transport import usbfs
 from .base import CardSession, Reader, ReaderError
 
-LOGGER = logging.getLogger("zmod_nfc")
+LOGGER = logging.getLogger("ff_nfc")
 
 CCID_CLASS = 0x0B
 
@@ -176,7 +176,7 @@ class CcidSession(CardSession):
         resp = self.slot.apdu(bytes([0xFF, 0xB0, block >> 8, block & 0xFF, length]))
         data = self._ok(resp)
         if data is None:
-            LOGGER.debug("zmod_nfc: READ BINARY %d: %s", block, resp.hex() if resp else "no reply")
+            LOGGER.debug("ff_nfc: READ BINARY %d: %s", block, resp.hex() if resp else "no reply")
         return data if data is not None and len(data) >= length else None
 
     def _read_page4(self, page):
@@ -232,7 +232,7 @@ class CcidSession(CardSession):
         if self._pn532_ok is None:
             fw = self._pn532(0x02)                  # GetFirmwareVersion
             self._pn532_ok = bool(fw) and fw[0] == 0x32
-            LOGGER.debug("zmod_nfc: CCID PN532 passthrough: %s", self._pn532_ok)
+            LOGGER.debug("ff_nfc: CCID PN532 passthrough: %s", self._pn532_ok)
         return self._pn532_ok
 
     def _exchange(self, data):
@@ -352,7 +352,7 @@ class CcidReader(Reader):
             if self.slots[0].escape(ACR122U_DETECTION_BEEP_OFF) is not None:
                 self._buzzer = self.slots[0]
             else:
-                LOGGER.info("zmod_nfc: %s refused the buzzer setting; it beeps on detection",
+                LOGGER.info("ff_nfc: %s refused the buzzer setting; it beeps on detection",
                             self.device.describe())
 
     def close(self):
@@ -373,7 +373,7 @@ class CcidReader(Reader):
         try:
             self._buzzer.escape(ACR122U_BEEP_DONE if complete else ACR122U_BEEP_TOO_SOON)
         except CcidError as exc:
-            LOGGER.debug("zmod_nfc: ACR122U beep: %s", exc)
+            LOGGER.debug("ff_nfc: ACR122U beep: %s", exc)
 
     def poll(self):
         if self.handle is None:
@@ -401,7 +401,7 @@ class CcidReader(Reader):
             if not session.uid:
                 slot.power_off()
                 continue
-            LOGGER.debug("zmod_nfc: CCID card ATR %s UID %s", atr.hex(), session.uid.hex())
+            LOGGER.debug("ff_nfc: CCID card ATR %s UID %s", atr.hex(), session.uid.hex())
             tag = self.read_card(session)
             slot.power_off()
             if tag is not None:

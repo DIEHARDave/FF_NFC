@@ -4,7 +4,7 @@
 set -eu
 
 PLUGIN_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd -P)
-MODULE=zmod_nfc.py
+MODULE=ff_nfc.py
 
 for EXTRAS_DIR in \
     /usr/prog/klipper/klippy/extras \
@@ -20,4 +20,4 @@ do
     fi
 done
 
-echo "zmod_nfc Klipper module links removed"
+echo "ff_nfc Klipper module links removed"

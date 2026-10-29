@@ -10,7 +10,7 @@ from ..readers.base import KeySet
 from . import open_formats, vendors
 from .ndef import tag_records
 
-LOGGER = logging.getLogger("zmod_nfc")
+LOGGER = logging.getLogger("ff_nfc")
 
 # Tried in order; the first decoder that recognises the tag wins. Tags that
 # name a Spoolman spool come first, free-form text last.
@@ -46,7 +46,7 @@ def mifare_keysets(uid, settings):
         try:
             keysets.extend(provider(uid, settings))
         except Exception:
-            LOGGER.exception("zmod_nfc: key derivation failed in %s", provider.__name__)
+            LOGGER.exception("ff_nfc: key derivation failed in %s", provider.__name__)
     extra = settings.get("extra_mifare_keys") or []
     if extra:
         keysets.append(KeySet("custom", [extra[0]] * 40, [extra[0]] * 40))
@@ -63,7 +63,7 @@ def decode(tag, settings=None, disabled=()):
     try:
         records = tag_records(tag)
     except Exception:
-        LOGGER.exception("zmod_nfc: NDEF parsing failed")
+        LOGGER.exception("ff_nfc: NDEF parsing failed")
         records = []
     reference = None
     for name, decoder in DECODERS:
@@ -72,7 +72,7 @@ def decode(tag, settings=None, disabled=()):
         try:
             filament = decoder(tag, records, settings)
         except Exception:
-            LOGGER.exception("zmod_nfc: %s decoder failed on %s", name, tag.uid_hex)
+            LOGGER.exception("ff_nfc: %s decoder failed on %s", name, tag.uid_hex)
             continue
         if filament is None:
             continue

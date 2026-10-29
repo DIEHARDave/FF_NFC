@@ -1,4 +1,4 @@
-"""The zmod_nfc USB-to-SPI bridge: a small microcontroller (RP2040,
+"""The FF_NFC USB-to-SPI bridge: a small microcontroller (RP2040,
 ESP32-S3, ...) that appears as a USB serial port and runs SPI transactions
 for the host. It carries the readers that have no USB of their own, the
 PN5180 and the RC522; their drivers hold the whole chip command layer, so
@@ -30,7 +30,7 @@ def _crc8(data):
 
 
 class SerialBridge(object):
-    """SPI over the zmod_nfc serial bridge protocol (v1)."""
+    """SPI over the FF_NFC serial bridge protocol (v1)."""
 
     SYNC = 0xA5
     CMD_HELLO = 0x01
@@ -53,7 +53,7 @@ class SerialBridge(object):
             raise NoBridgeError("%s: %s" % (self.path, exc))
         if not reply.startswith(self.MAGIC):
             self.port.close()
-            raise NoBridgeError("%s: not a zmod_nfc bridge" % self.path)
+            raise NoBridgeError("%s: not an FF_NFC bridge" % self.path)
         self.version = reply[len(self.MAGIC):].decode("ascii", "replace")
 
     def close(self):

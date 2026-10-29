@@ -22,7 +22,7 @@ import subprocess
 import threading
 import time
 
-LOGGER = logging.getLogger("zmod_nfc")
+LOGGER = logging.getLogger("ff_nfc")
 
 GPIO = "pc12"
 # (cmd_pwm, library directory or None): Zmod, then Kiln OS with the
@@ -101,7 +101,7 @@ class Beeper(object):
         if not self._busy.acquire(False):
             return False
         thread = threading.Thread(target=self._play, args=(frequency, duration),
-                                  name="zmod_nfc beep")
+                                  name="ff_nfc beep")
         thread.daemon = True
         thread.start()
         return True
@@ -113,7 +113,7 @@ class Beeper(object):
             else:
                 self._tone(frequency, duration)
         except Exception as exc:
-            LOGGER.warning("zmod_nfc: beep failed: %s", exc)
+            LOGGER.warning("ff_nfc: beep failed: %s", exc)
         finally:
             self._busy.release()
 

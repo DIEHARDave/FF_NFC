@@ -5,7 +5,7 @@
 set -eu
 
 PLUGIN_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd -P)
-MODULE=zmod_nfc.py
+MODULE=ff_nfc.py
 SOURCE="$PLUGIN_DIR/$MODULE"
 
 # The AD5X can have both the native Klipper and Zmod's Klipper 13 installed, so
@@ -37,7 +37,7 @@ do
         ln -s "$SOURCE" "$TARGET"
     fi
     linked=$((linked + 1))
-    echo "zmod_nfc linked in $EXTRAS_DIR"
+    echo "ff_nfc linked in $EXTRAS_DIR"
 done
 
 if [ "$linked" -eq 0 ]; then
@@ -45,4 +45,4 @@ if [ "$linked" -eq 0 ]; then
     exit 1
 fi
 
-echo "zmod_nfc installed"
+echo "ff_nfc installed"

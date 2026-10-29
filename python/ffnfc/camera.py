@@ -1,6 +1,6 @@
 """QR codes from the printer camera.
 
-The plugin runs this as a child process (python -m zmodnfc.camera) at a
+The plugin runs this as a child process (python -m ffnfc.camera) at a
 low priority, so a slow decode never holds Klipper's interpreter and a
 hung download or decoder cannot block it. It fetches camera snapshots,
 turns each JPEG into a grayscale frame, and looks for a QR code until it
@@ -18,7 +18,7 @@ more process per frame:
              stripped-down build does not).
 
 Also usable by hand, e.g. with a saved snapshot:
-    python3 -m zmodnfc.camera --image label.jpg
+    python3 -m ffnfc.camera --image label.jpg
 """
 
 import argparse
