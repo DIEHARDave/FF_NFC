@@ -150,6 +150,13 @@ instead. Set `skip_zmod_color_prompt: False` to keep Zmod's popup.
 Tags are ignored, and QR scanning is off, while printing unless
 `scan_while_printing: True`.
 
+The printer's speaker beeps after each scan: a short high beep when the tag
+was read, a longer low one when it left the reader too soon or has no
+filament data (or was ignored while printing). Zmod's `M300` does not reach
+the AD5X speaker, so the plugin drives it with Flashforge's `cmd_pwm`
+directly. `beep: False` turns it off; `scan_gcode` / `scan_error_gcode` run
+a macro instead. `NFC_STATUS` shows whether the speaker was found.
+
 ### With Spoolman
 
 When Moonraker has a `[spoolman]` section:

@@ -30,6 +30,7 @@ import threading
 import time
 
 from . import decoders
+from .beeper import Beeper
 from .decoders.crypto import key_matches
 from .decoders import vendors
 from .readers.base import ReaderError
@@ -184,6 +185,15 @@ class ZmodNfc(object):
         self.qr_ffmpeg = config.get("qr_ffmpeg", "")
         self.qr_scan_time = config.getfloat("qr_scan_time", 20., minval=1., maxval=120.)
         self.qr_width = config.getint("qr_width", DEFAULT_WIDTH, minval=320, maxval=4096)
+        self.beeper = Beeper(config.getboolean("beep", True))
+        self.beep_frequency = config.getint("beep_frequency", 1500, minval=100, maxval=10000)
+        self.beep_duration = config.getfloat("beep_duration", 0.2, minval=0.05, maxval=2.)
+        self.beep_error_frequency = config.getint("beep_error_frequency", 600,
+                                                  minval=100, maxval=10000)
+        self.beep_error_duration = config.getfloat("beep_error_duration", 0.6,
+                                                   minval=0.05, maxval=2.)
+        self.scan_gcode = config.get("scan_gcode", "").strip()
+        self.scan_error_gcode = config.get("scan_error_gcode", "").strip()
         moonraker_url = config.get("moonraker_url", "http://127.0.0.1:7125")
         self.spoolman = Spoolman(moonraker_url)
         self.lane_data = LaneData(moonraker_url) if config.getboolean("lane_data", True) else None
@@ -368,6 +378,7 @@ class ZmodNfc(object):
                 self._post(self.gcode.respond_info,
                            "NFC: the tag left the reader too soon (%s). Hold the spool"
                            " on the reader until it beeps." % tag.describe())
+                self._post(self._signal, False)
             elif tag is not None:
                 scan = self._process(tag)
                 self._post(self._handle_scan, scan)
@@ -449,7 +460,30 @@ class ZmodNfc(object):
         given when called from a G-code command (NFC_TEST_SCAN), where
         run_script would deadlock. Returns what happened: "prompt",
         "assigned", "disabled", "printing", "no_data", "no_slot" or
-        "error"; messages collects what a direct assignment reported."""
+        "error"; messages collects what a direct assignment reported.
+        Beeps (or runs scan_gcode / scan_error_gcode) on the outcome."""
+        outcome = self._route_scan(scan, run_gcode, slot, messages)
+        if outcome != "disabled":
+            self._signal(outcome in ("prompt", "assigned"), run_gcode)
+        return outcome
+
+    def _signal(self, good, run_gcode=None):
+        """A beep for a read (good) or a failed one, or the configured
+        G-code instead."""
+        script = self.scan_gcode if good else self.scan_error_gcode
+        if script:
+            try:
+                (run_gcode or self.gcode.run_script)(script)
+            except Exception as exc:
+                self.gcode.respond_info("NFC: %s failed: %s"
+                                        % ("scan_gcode" if good else "scan_error_gcode", exc))
+            return
+        if good:
+            self.beeper.beep(self.beep_frequency, self.beep_duration)
+        else:
+            self.beeper.beep(self.beep_error_frequency, self.beep_error_duration)
+
+    def _route_scan(self, scan, run_gcode, slot, messages):
         self.last = scan
         if not self.enabled:
             return "disabled"
@@ -781,6 +815,8 @@ class ZmodNfc(object):
                                        "" if self.enabled else " (disabled)")]
         if self.reader_state != "connected" and self.reader_error:
             lines.append("  %s" % self.reader_error)
+        self.beeper.find()
+        lines.append("Beep: %s" % self.beeper.describe())
         if self.last is not None:
             age = time.time() - self.last.time
             lines.append("Last scan (%s), %ds ago: %s" % (self.last.source(), age, self.last.title()))

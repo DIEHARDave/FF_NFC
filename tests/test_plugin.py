@@ -422,6 +422,26 @@ class PluginTest(unittest.TestCase):
         self.assertIsNone(plugin.pending)
         self.assertIn("has no filament data", gcode.info[-1])
 
+    def test_beep_on_scan(self):
+        plugin, gcode, _ = make_plugin()
+        beeps = []
+        plugin.beeper.beep = lambda frequency, duration: beeps.append((frequency, duration))
+        self.scan(plugin, "PETG:00FF00")
+        plugin._handle_scan(plugin._process(type2_tag(b"")))
+        gcode.commands["NFC_DISABLE"](FakeGcmd(gcode))
+        self.scan(plugin, "PLA:FF0000")
+        self.assertEqual(beeps, [(1500, 0.2), (600, 0.6)])
+        self.assertEqual(gcode.scripts, [])
+
+    def test_scan_gcode_replaces_beep(self):
+        plugin, gcode, _ = make_plugin({"scan_gcode": "FLASH_OK", "scan_error_gcode": "FLASH_BAD"})
+        beeps = []
+        plugin.beeper.beep = lambda frequency, duration: beeps.append((frequency, duration))
+        self.scan(plugin, "PETG:00FF00")
+        plugin._handle_scan(plugin._process(type2_tag(b"")))
+        self.assertEqual(gcode.scripts, ["FLASH_OK", "FLASH_BAD"])
+        self.assertEqual(beeps, [])
+
 
 
 class FakeProcess(object):
