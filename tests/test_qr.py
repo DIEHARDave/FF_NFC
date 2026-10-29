@@ -1,12 +1,15 @@
 """QR code reader: Reed-Solomon, symbol decoding against reference codes,
 and finding codes in rendered camera-like images."""
 
+import codecs
+import io
 import json
 import math
 import os
 import random
 import shutil
 import subprocess
+import sys
 import tempfile
 import unittest
 
@@ -26,6 +29,14 @@ def load_codes():
     for code in codes:
         code["bits"] = [[int(ch) for ch in row] for row in code["rows"]]
     return codes
+
+
+def has_codec(name):
+    try:
+        codecs.lookup(name)
+        return True
+    except LookupError:
+        return False
 
 
 def render(bits, width, height, module, angle=0., tilt=0., noise=0, dark=40, light=200,
@@ -73,14 +84,21 @@ class ReedSolomonTest(unittest.TestCase):
 
 
 class MatrixTest(unittest.TestCase):
+    def codes(self):
+        """The reference codes this Python can decode: Kiln OS's has no
+        shift_jis codec for the Kanji code."""
+        return [code for code in load_codes()
+                if has_codec("shift_jis")
+                or not any(0x3000 <= ord(ch) <= 0x9FFF for ch in code["text"])]
+
     def test_reference_codes(self):
-        for code in load_codes():
+        for code in self.codes():
             self.assertEqual(qr.decode_matrix(code["bits"]), code["text"],
                              "version %d-%s" % (code["version"], code["error"]))
 
     def test_damaged_modules(self):
         rnd = random.Random(7)
-        for code in load_codes():
+        for code in self.codes():
             bits = [list(row) for row in code["bits"]]
             dim = len(bits)
             for _ in range(3):
@@ -192,7 +210,12 @@ class CameraTest(unittest.TestCase):
 
     def test_decoder_choice(self):
         root = tempfile.mkdtemp()
+        original = camera.PillowDecoder.available
+        camera.PillowDecoder.available = staticmethod(lambda: False)
         try:
+            with self.assertRaises(camera.CameraError):
+                camera.make_decoder("pillow")
+            self.assertEqual(camera.make_decoder("ffmpeg", root, sys.executable).name, "ffmpeg")
             self.assertFalse(camera.TurboJpegDecoder.available(root))
             with self.assertRaises(camera.CameraError):
                 camera.make_decoder("turbojpeg", root)
@@ -201,6 +224,7 @@ class CameraTest(unittest.TestCase):
                 open(os.path.join(root, name), "w").close()
             self.assertEqual(camera.make_decoder("auto", root).name, "turbojpeg")
         finally:
+            camera.PillowDecoder.available = original
             shutil.rmtree(root)
 
     def test_turbojpeg_scaling_and_crop(self):
@@ -241,6 +265,44 @@ class CameraTest(unittest.TestCase):
             self.assertIn("Not a JPEG file", str(caught.exception))
         finally:
             camera.subprocess.run = original
+
+
+
+@unittest.skipUnless(camera.PillowDecoder.available(), "needs Pillow with JPEG support")
+class PillowTest(unittest.TestCase):
+    def setUp(self):
+        from PIL import Image
+        self.Image = Image
+        self.codes = load_codes()
+
+    def jpeg_of(self, pixels, width, height):
+        out = io.BytesIO()
+        self.Image.frombytes("L", (width, height), pixels).save(out, "JPEG", quality=90)
+        return out.getvalue()
+
+    def test_scaling_and_crop(self):
+        decoder = camera.make_decoder("auto")
+        self.assertEqual(decoder.name, "pillow")
+        pixels = bytes(range(256)) * (2048 * 1536 // 256)
+        jpeg = self.jpeg_of(pixels, 2048, 1536)
+        _, width, height = decoder.gray(jpeg, 1024)
+        self.assertEqual((width, height), (1024, 768))
+        _, width, height = decoder.gray(jpeg, 1280)
+        self.assertEqual((width, height), (2048, 1536))
+        pixels, width, height = decoder.gray(jpeg, crop=(101, 51, 133, 85))
+        self.assertEqual((width, height, len(pixels)), (32, 34, 32 * 34))
+
+    def test_reads_code_from_jpeg(self):
+        code = self.codes[0]
+        pixels = render(code["bits"], 640, 360, module=6.)
+        text = camera.decode_jpeg(self.jpeg_of(pixels, 640, 360), camera.make_decoder("pillow"))
+        self.assertEqual(text, code["text"])
+
+    def test_bad_jpeg(self):
+        with self.assertRaises(camera.CameraError):
+            # A frame header and nothing else: no image data to decode.
+            camera.make_decoder("pillow").gray(bytes.fromhex("ffd8ffc000110801e0028003") + bytes(9))
+
 
 
 if __name__ == "__main__":

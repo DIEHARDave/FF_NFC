@@ -7,9 +7,12 @@ turns each JPEG into a grayscale frame, and looks for a QR code until it
 finds one or the time is up. The result is one JSON line on stdout:
 {"text": ...} or {"error": ...}.
 
-Decoding a JPEG in Python is out of reach on these printers, and the
-host's libjpeg calls exit() on bad data, so a JPEG decoder runs as one
-more process per frame:
+JPEG decoders, the first available by default:
+  pillow     Pillow, which Kiln OS ships for its Python with libjpeg. Big
+             frames are decoded at 1/2, 1/4 or 1/8 size directly (draft
+             mode), which is much faster than decoding and then scaling.
+Zmod's Python has no Pillow, and the host's libjpeg calls exit() on bad
+data, so there a JPEG decoder runs as one more process per frame:
   turbojpeg  libturbojpeg through Python in Zmod's chroot, which both the
              AD5X and the Creator 5 have. Decodes at 1/2 or 1/4 size
              directly when the frame is large.
@@ -18,11 +21,12 @@ more process per frame:
              stripped-down build does not).
 
 Also usable by hand, e.g. with a saved snapshot:
-    python3 -m ffnfc.camera --image label.jpg
+    PYTHONPATH=python python3 -m ffnfc.camera --image label.jpg
 """
 
 import argparse
 import glob
+import io
 import json
 import os
 import shutil
@@ -33,12 +37,11 @@ import urllib.request
 
 from . import qr
 
-# Both camera streamers Zmod uses (ustreamer on the AD5X, mjpg-streamer on
-# the Creator 5) answer mjpg-streamer's snapshot URL.
+# The plugin passes its platform's URL and width; these are for use by hand.
 DEFAULT_URL = "http://127.0.0.1:8080/?action=snapshot"
 DEFAULT_WIDTH = 1024
 DEFAULT_CHROOT = "/usr/data/.mod/.zmod"
-DECODERS = ("auto", "turbojpeg", "ffmpeg")
+DECODERS = ("auto", "pillow", "turbojpeg", "ffmpeg")
 MAX_SAVED_FRAMES = 20
 
 # Runs inside the chroot, with its own Python and libraries: JPEG on stdin,
@@ -118,6 +121,46 @@ def _crop_box(crop, width, height):
     if right - left < 16 or bottom - top < 16:
         raise CameraError("crop box too small")
     return left, top, right, bottom
+
+
+class PillowDecoder(object):
+    name = "pillow"
+
+    def __init__(self):
+        from PIL import Image
+        self.Image = Image
+
+    @staticmethod
+    def available():
+        try:
+            from PIL import features
+        except ImportError:
+            return False
+        try:
+            return bool(features.check("jpg"))
+        except Exception:
+            return False
+
+    def gray(self, jpeg, max_width=DEFAULT_WIDTH, crop=None):
+        """(pixels, width, height): the JPEG as 8-bit grayscale, scaled down
+        by 2, 4 or 8 while it stays at least max_width wide, or the crop box
+        (left, top, right, bottom) of it at full resolution."""
+        width, height = jpeg_size(jpeg)
+        try:
+            image = self.Image.open(io.BytesIO(jpeg))
+            if crop is None:
+                # draft picks the largest libjpeg scale that keeps the
+                # image at least this big.
+                image.draft("L", (max_width, max(1, height * max_width // width)))
+                image = image.convert("L")
+            else:
+                image = image.convert("L")
+                image = image.crop(_crop_box(crop, image.size[0], image.size[1]))
+            return image.tobytes(), image.size[0], image.size[1]
+        except CameraError:
+            raise
+        except Exception as exc:
+            raise CameraError("could not decode the camera image: %s" % exc)
 
 
 class TurboJpegDecoder(object):
@@ -207,15 +250,20 @@ class FfmpegDecoder(object):
 
 
 def make_decoder(kind="auto", chroot=DEFAULT_CHROOT, ffmpeg=""):
-    """The JPEG decoder to use: turbojpeg in the chroot when it is there,
-    otherwise ffmpeg."""
+    """The JPEG decoder to use: Pillow when it can read JPEG, else turbojpeg
+    in the chroot when it is there, otherwise ffmpeg."""
+    if kind in ("auto", "pillow") and PillowDecoder.available():
+        return PillowDecoder()
+    if kind == "pillow":
+        raise CameraError("Pillow with JPEG support is not installed")
     if kind in ("auto", "turbojpeg") and TurboJpegDecoder.available(chroot):
         return TurboJpegDecoder(chroot)
     if kind == "turbojpeg":
         raise CameraError("no libturbojpeg and python3 in %s (qr_chroot)" % chroot)
     path = find_ffmpeg(ffmpeg)
     if path is None:
-        raise CameraError("no JPEG decoder: neither libturbojpeg in %s nor ffmpeg" % chroot)
+        raise CameraError("no JPEG decoder: neither Pillow, libturbojpeg in %s nor ffmpeg"
+                          % chroot)
     return FfmpegDecoder(path)
 
 

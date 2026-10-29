@@ -1,6 +1,7 @@
-"""Raw serial port over termios, standing in for pyserial (which Zmod's
-Python does not ship). USB-serial bridges (CH340, CP210x, PL2303, FTDI)
-and CDC-ACM devices appear as /dev/ttyUSB* and /dev/ttyACM*."""
+"""Raw serial port over termios, standing in for pyserial (which Zmod's and
+Kiln's Python do not ship). With kernel drivers, USB-serial bridges (CH340,
+CP210x, PL2303, FTDI) and CDC-ACM devices appear as /dev/ttyUSB* and
+/dev/ttyACM*; without them usb_serial.py drives the common ones."""
 
 import errno
 import fcntl

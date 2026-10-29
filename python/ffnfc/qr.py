@@ -319,9 +319,18 @@ _ECI_ENCODINGS = {
 }
 
 
+def _decode_text(raw, encoding):
+    try:
+        return raw.decode(encoding, "replace")
+    except LookupError:
+        # Kiln OS's Python is built without the CJK codecs (shift_jis, big5,
+        # ...); spool labels are ASCII, so the rest of the code still reads.
+        return raw.decode("utf-8", "replace")
+
+
 def _decode_bytes(raw, encoding):
     if encoding:
-        return raw.decode(encoding, "replace")
+        return _decode_text(raw, encoding)
     try:
         return raw.decode("utf-8")
     except UnicodeDecodeError:
@@ -384,7 +393,7 @@ def _decode_segments(data, version):
                 code = ((value // 0xC0) << 8) | (value % 0xC0)
                 code += 0x8140 if code < 0x1F00 else 0xC140
                 raw += bytes([code >> 8, code & 0xFF])
-            parts.append(bytes(raw).decode("shift_jis", "replace"))
+            parts.append(_decode_text(bytes(raw), "shift_jis"))
         elif mode == 7:
             first = reader.read(8)
             if first & 0x80 == 0:

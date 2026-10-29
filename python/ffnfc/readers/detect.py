@@ -4,6 +4,7 @@ import logging
 import os
 
 from ..transport.serial_port import usb_serial_ports
+from ..transport.usb_serial import usb_ports
 from .base import ReaderError
 from . import ccid, pn532, pn5180, rc522
 from .bridge import NoBridgeError, SerialBridge
@@ -27,12 +28,13 @@ KLIPPER_USB_ID = ("1d50", "614e")
 
 def candidate_ports(device, excluded):
     """Serial ports to probe: the named device, or USB serial ports from a
-    known bridge vendor that no Klipper MCU uses."""
+    known bridge vendor that no Klipper MCU uses: kernel ttys, and chips
+    without a kernel driver through usbfs (usb:<port>)."""
     excluded = set(os.path.realpath(p) for p in excluded)
     if device:
         return [device]
     ports = []
-    for path, vid, pid, product in usb_serial_ports():
+    for path, vid, pid, product in usb_serial_ports() + usb_ports():
         if os.path.realpath(path) in excluded:
             continue
         if (vid, pid) == KLIPPER_USB_ID or vid not in PROBE_VIDS:

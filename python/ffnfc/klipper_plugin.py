@@ -1,13 +1,12 @@
-"""Klipper side of ff_nfc: the [ff_nfc] config section.
+"""Klipper side of FF_NFC: the [ff_nfc] config section.
 
 A worker thread owns the reader: it polls for tags, decodes them and looks
 them up in Spoolman, then hands each scan to the reactor. The reactor
 shows a prompt (Mainsail, Fluidd and HelixScreen render Klipper's
 action:prompt) asking which IFS slot or toolhead the spool goes to, and
-writes the choice into Zmod - through zmod_afclite's SET_SPOOL_ID when that
-plugin is loaded and the spool is in Spoolman, otherwise with Zmod's own
-CHANGE_ZCOLOR. Inserting the filament into a free slot while the prompt is
-open picks that slot, which also works with screens that cannot show
+the platform (platforms/: Zmod or Kiln OS) writes the choice into the
+printer's slots. Inserting the filament into a free slot while the prompt
+is open picks that slot, which also works with screens that cannot show
 prompts.
 
 NFC_QR_SCAN reads a QR label (Spoolman, OpenSpool JSON, text) through the
@@ -19,7 +18,7 @@ endpoints that Moonraker publishes (ff_nfc/scan, ...; remote.py); those
 take the same path too.
 
 After an assignment the slot's Moonraker lane_data entry gets the spool's
-details (lane_data.py), for OrcaSlicer."""
+details (lane_data.py), for OrcaSlicer and HelixScreen."""
 
 import json
 import logging
@@ -35,64 +34,29 @@ from .decoders.crypto import key_matches
 from .decoders import vendors
 from .readers.base import ReaderError
 from .readers.detect import READER_TYPES, open_reader
-from .spoolman import Spoolman, SpoolmanError, normalize_uid, spool_color, spool_title, spool_uids
-from .camera import DECODERS as QR_DECODERS, DEFAULT_CHROOT, DEFAULT_URL, DEFAULT_WIDTH
+from .spoolman import Spoolman, SpoolmanError, normalize_uid, spool_color, spool_title
+from .camera import DECODERS as QR_DECODERS
 from .decoders.ndef import text_message, type2_image
-from .lane_data import LaneData
+from .platforms import make_platform
 from .remote import API_VERSION, RemoteError, tag_from_json
-from .tag import KIND_QR, KIND_TYPE2, TECH_CAMERA, TECH_ISO14443A, Tag, normalize_color
+from .tag import KIND_QR, KIND_TYPE2, TECH_CAMERA, TECH_ISO14443A, Tag
 
 LOGGER = logging.getLogger("ff_nfc")
 # The directory holding the ffnfc package, for the camera child process.
-PLUGIN_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+PACKAGE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+# The plugin's clone (python/ffnfc/ is two levels down).
+PLUGIN_DIR = os.path.dirname(PACKAGE_DIR)
 # The last camera scan's frames, to see why a label was not read.
 QR_FRAMES_DIR = "/tmp/ff_nfc_qr"
 
 SPOOLMAN_REMOTE_METHOD = "spoolman_set_active_spool"
-SLOTS_PER_IFS = 4
-UNSET_MATERIALS = ("NONE", "N/A", "?", "")
-SPOOL_VARIABLE = "ff_nfc_slot%d_spool"
 REMOTE_ENDPOINTS = ("scan", "assign", "cancel", "info")
 INSERT_POLL = 1.0
 # Larger "spool IDs" on tags are not Spoolman's (Spoolman counts from 1).
 MAX_SPOOLMAN_ID = 10 ** 7
-
-
-def resolve_material(material, valid_types):
-    """Zmod material type for a tag's or Spoolman's material: exact match,
-    then the base without filler or modifiers, then the same fallbacks
-    zmod_afclite and SpoolSync use (ASA -> ABS, PLA blends -> PLA)."""
-    material = str(material or "").strip().upper()
-    valid = [str(t).upper() for t in valid_types if str(t).upper() not in UNSET_MATERIALS]
-    if not valid:
-        return material or None
-    candidates = [material, material.split("-")[0], material.split(" ")[0]]
-    for candidate in candidates:
-        if candidate in valid:
-            return candidate
-    if material.startswith("ASA"):
-        fallback = "ABS"
-    elif material in ("COPE", "CPE") or "PLA" in material:
-        fallback = "PLA"
-    elif material.startswith(("PCTG", "PET")):
-        fallback = "PETG"
-    else:
-        return None
-    return fallback if fallback in valid else None
-
-
-def nearest_palette_color(color, palette):
-    """Closest palette entry by the "redmean" weighted RGB distance."""
-    def rgb(value):
-        return [int(value[i:i + 2], 16) for i in (0, 2, 4)]
-
-    def distance(entry):
-        (r1, g1, b1), (r2, g2, b2) = rgb(color), rgb(entry)
-        mean = (r1 + r2) / 2
-        return ((2 + mean / 256) * (r1 - r2) ** 2 + 4 * (g1 - g2) ** 2
-                + (2 + (255 - mean) / 256) * (b1 - b2) ** 2)
-
-    return min(palette, key=distance)
+# The slot temperatures a tag or Spoolman may set.
+MIN_TEMP, MAX_TEMP = 150, 350
+UNSET_MATERIALS = ("NONE", "N/A", "?", "")
 
 
 class Scan(object):
@@ -135,6 +99,22 @@ class Scan(object):
             return spool_color(self.spool)
         return self.filament.color if self.filament else None
 
+    def nozzle_temp(self):
+        """Nozzle temperature for the slot (Spoolman's, else the tag's)."""
+        temps = []
+        if self.spool is not None:
+            temps.append((self.spool.get("filament") or {}).get("settings_extruder_temp"))
+        if self.filament is not None:
+            temps.append(self.filament.nozzle_temp)
+        for temp in temps:
+            try:
+                temp = int(round(float(temp)))
+            except (TypeError, ValueError):
+                continue
+            if MIN_TEMP <= temp <= MAX_TEMP:
+                return temp
+        return None
+
     def has_filament_data(self):
         return bool(self.material() or self.color())
 
@@ -155,7 +135,7 @@ class Scan(object):
 
 
 class FfNfc(object):
-    def __init__(self, config):
+    def __init__(self, config, platform="zmod"):
         self.printer = config.get_printer()
         self.reactor = self.printer.get_reactor()
         self.gcode = self.printer.lookup_object("gcode")
@@ -175,16 +155,15 @@ class FfNfc(object):
         self.auto_create = config.getboolean("spoolman_auto_create", False)
         self.bind_card_uid = config.getboolean("bind_card_uid", True)
         self.match_filament = config.getboolean("spoolman_match_filament", True)
-        self.skip_zmod_prompt = config.getboolean("skip_zmod_color_prompt", True)
-        self.skip_window = config.getfloat("skip_zmod_color_window", 300., minval=0.)
+        self.platform = make_platform(platform, self, config)
         self.disabled_formats = [f.strip() for f in config.get("disabled_formats", "").split(",")
                                  if f.strip()]
-        self.qr_url = config.get("qr_snapshot_url", DEFAULT_URL)
+        self.qr_url = config.get("qr_snapshot_url", self.platform.qr_url)
         self.qr_decoder = config.getchoice("qr_decoder", {d: d for d in QR_DECODERS}, "auto")
-        self.qr_chroot = config.get("qr_chroot", DEFAULT_CHROOT)
         self.qr_ffmpeg = config.get("qr_ffmpeg", "")
         self.qr_scan_time = config.getfloat("qr_scan_time", 20., minval=1., maxval=120.)
-        self.qr_width = config.getint("qr_width", DEFAULT_WIDTH, minval=320, maxval=4096)
+        self.qr_width = config.getint("qr_width", self.platform.qr_width,
+                                      minval=320, maxval=4096)
         self.beeper = Beeper(config.getboolean("beep", True))
         self.beep_frequency = config.getint("beep_frequency", 1500, minval=100, maxval=10000)
         self.beep_duration = config.getfloat("beep_duration", 0.2, minval=0.05, maxval=2.)
@@ -196,7 +175,8 @@ class FfNfc(object):
         self.scan_error_gcode = config.get("scan_error_gcode", "").strip()
         moonraker_url = config.get("moonraker_url", "http://127.0.0.1:7125")
         self.spoolman = Spoolman(moonraker_url)
-        self.lane_data = LaneData(moonraker_url) if config.getboolean("lane_data", True) else None
+        self.lane_data = (self.platform.lane_data_class(moonraker_url)
+                          if config.getboolean("lane_data", True) else None)
         self.remote_result = None     # outcome of the last network scan
         self.settings = self._vendor_settings(config)
         self.excluded_ports = []
@@ -205,7 +185,6 @@ class FfNfc(object):
             if serial:
                 self.excluded_ports.append(serial)
 
-        self.zmod_color = None
         self.enabled = True
         self.reader_name = ""
         self.reader_state = "starting"
@@ -219,8 +198,6 @@ class FfNfc(object):
         self._thread = None
         self._stop = threading.Event()
         self._rescan = threading.Event()
-        self._assigned = {}          # slot -> reactor time of the NFC assignment
-        self._zmod_run_zcolor = None
         self._qr_process = None      # camera child process while scanning
         self._qr_prompt = False      # the "hold the label up" prompt is shown
 
@@ -282,33 +259,10 @@ class FfNfc(object):
     # Lifecycle ------------------------------------------------------------
 
     def _handle_connect(self):
-        # After a filament insert (AD5X IFS auto-load, Creator 5 head sensor)
-        # Zmod runs RUN_ZCOLOR SLOT=<n> HIDE=1, a popup to pick the slot's
-        # color and material. Wrap it so slots set from a tag skip it.
-        if self.skip_zmod_prompt and "RUN_ZCOLOR" in self.gcode.ready_gcode_handlers:
-            self._zmod_run_zcolor = self.gcode.register_command("RUN_ZCOLOR", None)
-            self.gcode.register_command(
-                "RUN_ZCOLOR", self.cmd_RUN_ZCOLOR,
-                desc="Zmod slot color popup (skipped for slots set by ff_nfc)")
-
-    def cmd_RUN_ZCOLOR(self, gcmd):
-        if gcmd.get_int("HIDE", 0) == 1:
-            slot = gcmd.get_int("SLOT", 0)
-            # The tag's prompt is still open: the inserted slot is its answer.
-            if self.pending is not None and slot in self._slots()["slots"]:
-                scan = self.pending
-                self._close_prompt()
-                self._assign(scan, slot, gcmd.respond_info)
-                self._assigned.pop(slot, None)   # this was the popup to skip
-                return
-            assigned = self._assigned.pop(slot, None)
-            if assigned is not None and self.reactor.monotonic() - assigned <= self.skip_window:
-                gcmd.respond_info("NFC: slot %d was set from its tag; skipping the color selection" % slot)
-                return
-        self._zmod_run_zcolor(gcmd)
+        self.platform.connect()
 
     def _handle_ready(self):
-        self.zmod_color = self.printer.lookup_object("zmod_color", None)
+        self.platform.ready()
         self._stop.clear()
         self._thread = threading.Thread(target=self._run, name="ff_nfc reader")
         self._thread.daemon = True
@@ -506,49 +460,15 @@ class FfNfc(object):
         self._show_prompt(scan, slots)
         return "prompt"
 
-    # Zmod slots -----------------------------------------------------------
+    # Slots ----------------------------------------------------------------
 
     def _slots(self):
-        """{"toolchanger", "current", "valid_types", "palette", "presence",
-        "slots": {n: {"material", "color", "loaded"}}} from zmod_color."""
-        info = {"toolchanger": False, "current": 0, "valid_types": [], "palette": [],
-                "presence": False, "slots": {}}
-        if self.zmod_color is None:
-            info["slots"] = {1: {"material": "", "color": "", "loaded": False}}
-            return info
-        status = self.zmod_color.get_status(self.reactor.monotonic())
-        info["toolchanger"] = int(status.get("total_tools", 1) or 1) > 1
-        count = max(1, int(status.get("color_limit", SLOTS_PER_IFS) or SLOTS_PER_IFS))
-        if self.printer.lookup_object("ifs_jacker", None) is None:
-            count = min(count, SLOTS_PER_IFS)
-        if info["toolchanger"]:
-            info["current"] = max(int(status.get("active_tool_id", -1)), -1) + 1
-        else:
-            info["current"] = int(status.get("channel", 0) or 0)
-        info["valid_types"] = list(status.get("valid_types") or [])
-        info["palette"] = [str(p).replace("#", "").upper() for p in status.get("palette") or []
-                           if len(str(p).replace("#", "")) == 6]
-        presence = info["toolchanger"] or not status.get("display")
-        if "filament_known" in status:
-            presence = info["toolchanger"] or bool(status["filament_known"])
-        info["presence"] = presence
-        by_id = {}
-        for slot in status.get("slots") or []:
-            try:
-                by_id[int(slot.get("ID"))] = slot
-            except (TypeError, ValueError):
-                continue
-        for n in range(1, count + 1):
-            slot = by_id.get(n, {})
-            info["slots"][n] = {
-                "material": str(slot.get("Material", "") or ""),
-                "color": str(slot.get("HEX", "") or "").replace("#", "").upper()[:6],
-                "loaded": bool(slot.get("hasFilament")),
-            }
-        return info
+        """{"toolchanger", "current", "presence",
+        "slots": {n: {"material", "color", "loaded"}}, ...} from the platform."""
+        return self.platform.slots()
 
     def _slot_label(self, slots, n):
-        return ("T%d" % (n - 1)) if slots["toolchanger"] else ("Slot %d" % n)
+        return self.platform.slot_label(slots, n)
 
     # Prompt ---------------------------------------------------------------
 
@@ -573,7 +493,7 @@ class FfNfc(object):
             details.append(scan.filament.fmt + (" QR code" if scan.is_qr else " tag"))
         self._qr_prompt = False      # this prompt replaces the camera one
         self._prompt("prompt_text %s" % clean(" - ".join(details)))
-        hint = "Choose the %s" % ("toolhead" if slots["toolchanger"] else "IFS slot")
+        hint = "Choose the %s" % self.platform.slot_word(slots)
         if self.assign_on_insert and slots["presence"]:
             hint += ", or insert the filament into an empty one"
         self._prompt("prompt_text %s" % hint)
@@ -669,63 +589,12 @@ class FfNfc(object):
         if slot_number not in slots["slots"]:
             raise self.printer.command_error("NFC: there is no slot %d" % slot_number)
         label = self._slot_label(slots, slot_number)
-        # Zmod's own color popup for this slot's next insert is skipped.
-        self._assigned[slot_number] = self.reactor.monotonic()
-        spool = scan.spool
-        afclite = self.printer.lookup_object("zmod_afclite", None)
-        if spool is not None and afclite is not None:
-            # zmod_afclite tracks per-lane spools, writes the spool's color
-            # and material into Zmod and keeps Moonraker's active spool on
-            # the loaded lane.
-            cmd = "SET_SPOOL_ID LANE=E%d SPOOL_ID=%d" % (slot_number - 1, spool["id"])
-            if self.bind_card_uid and scan.uid and scan.uid not in spool_uids(spool):
-                cmd += " CARD_UID=%s" % scan.uid
-            run_gcode(cmd)
-            respond("NFC: %s is now Spoolman spool %d (%s)" % (label, spool["id"], scan.title()))
-            self._write_lane_data(scan, slot_number,
-                                  resolve_material(scan.material(), slots["valid_types"]),
-                                  normalize_color(scan.color()), slots["palette"])
-            return
+        self.platform.assign(scan, slot_number, slots, label, respond, run_gcode)
 
-        material = resolve_material(scan.material(), slots["valid_types"])
-        current = slots["slots"][slot_number]
-        if material is None:
-            material = current["material"] if current["material"].upper() not in UNSET_MATERIALS else None
-            respond("NFC: %r is not a material this printer knows; %s keeps %s"
-                    % (scan.material(), label, material or "its material"))
-        color = normalize_color(scan.color()) or current["color"] or "FFFFFF"
-        # Zmod only stores its palette colors; lane_data (OrcaSlicer,
-        # HelixScreen) gets the spool's own color.
-        zmod_color = color
-        if slots["palette"] and color not in slots["palette"]:
-            zmod_color = nearest_palette_color(color, slots["palette"])
-            respond("NFC: #%s is stored as the closest palette color #%s" % (color, zmod_color))
-        if self.zmod_color is not None and material:
-            # SILENT=1 keeps Zmod from opening its color picker.
-            run_gcode("CHANGE_ZCOLOR SLOT=%d HEX=%s TYPE=%s SILENT=1"
-                            % (slot_number, zmod_color, material))
-        self._write_lane_data(scan, slot_number, material, color, slots["palette"])
-        if spool is not None:
-            if self.printer.lookup_object("save_variables", None) is not None:
-                run_gcode("SAVE_VARIABLE VARIABLE=%s VALUE=%d"
-                                % (SPOOL_VARIABLE % slot_number, spool["id"]))
-            if slots["current"] in (0, slot_number) or len(slots["slots"]) == 1:
-                self._set_active_spool(spool["id"])
-            if self.bind_card_uid and scan.uid and scan.uid not in spool_uids(spool):
-                self._in_background(self.spoolman.bind_uid, spool, scan.uid)
-            respond("NFC: %s is now %s (Spoolman spool %d)" % (label, scan.title(), spool["id"]))
-        else:
-            respond("NFC: %s is now %s #%s" % (label, material or "?", zmod_color))
-
-    def _write_lane_data(self, scan, slot_number, material, color, palette=None):
-        if self.lane_data is None:
-            return
+    def _lane_info(self, scan, material, color):
+        """What lane_data gets about a scanned spool in a slot."""
         info = {"material": material, "color": color, "name": scan.title(),
                 "uid": scan.uid if scan.tag.uid else ""}
-        if color and palette:
-            # The palette color Zmod gets for this one (zmod_afclite snaps
-            # the same way), so its lane_data mirror keeps the exact color.
-            info["zmod_color"] = color if color in palette else nearest_palette_color(color, palette)
         if scan.spool is not None:
             filament = scan.spool.get("filament") or {}
             info["spool_id"] = scan.spool["id"]
@@ -736,7 +605,11 @@ class FfNfc(object):
             info["vendor"] = info.get("vendor") or scan.filament.brand
             info["nozzle_temp"] = info.get("nozzle_temp") or scan.filament.nozzle_temp
             info["bed_temp"] = info.get("bed_temp") or scan.filament.bed_temp
-        self.lane_data.write_later(slot_number, info)
+        return info
+
+    def _write_lane_data(self, slot_number, info):
+        if self.lane_data is not None:
+            self.lane_data.write_later(slot_number, info)
 
     def _set_active_spool(self, spool_id):
         try:
@@ -817,6 +690,8 @@ class FfNfc(object):
             lines.append("  %s" % self.reader_error)
         self.beeper.find()
         lines.append("Beep: %s" % self.beeper.describe())
+        for problem in self.platform.status_lines():
+            lines.append("  %s" % problem)
         if self.last is not None:
             age = time.time() - self.last.time
             lines.append("Last scan (%s), %ds ago: %s" % (self.last.source(), age, self.last.title()))
@@ -893,13 +768,13 @@ class FfNfc(object):
         command = [sys.executable, "-m", "ffnfc.camera", "--url", self.qr_url,
                    "--time", "%g" % seconds, "--width", str(self.qr_width), "--nice", "19",
                    "--verbose", "--save-dir", QR_FRAMES_DIR,
-                   "--decoder", self.qr_decoder, "--chroot", self.qr_chroot]
+                   "--decoder", self.qr_decoder] + self.platform.qr_args()
         if self.qr_ffmpeg:
             command += ["--ffmpeg", self.qr_ffmpeg]
         env = dict(os.environ)
-        env["PYTHONPATH"] = os.pathsep.join(p for p in (PLUGIN_DIR, env.get("PYTHONPATH")) if p)
+        env["PYTHONPATH"] = os.pathsep.join(p for p in (PACKAGE_DIR, env.get("PYTHONPATH")) if p)
         try:
-            process = subprocess.Popen(command, cwd=PLUGIN_DIR, env=env,
+            process = subprocess.Popen(command, cwd=PACKAGE_DIR, env=env,
                                        stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
                                        stderr=subprocess.PIPE)
         except OSError as exc:
@@ -1102,4 +977,4 @@ class FfNfc(object):
 
 
 def load_config(config, platform="zmod"):
-    return FfNfc(config)
+    return FfNfc(config, platform)

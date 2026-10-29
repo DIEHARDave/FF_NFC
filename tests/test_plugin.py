@@ -7,6 +7,7 @@ import unittest
 from helpers import text_record, type2_tag
 
 from ffnfc import klipper_plugin
+from ffnfc.platforms import zmod
 
 
 class CommandError(Exception):
@@ -178,7 +179,7 @@ def make_plugin(options=None, tools=1, palette=None, afclite=False):
     # No lane_data writes to a Moonraker that is not there.
     options = dict({"lane_data": False}, **(options or {}))
     plugin = klipper_plugin.FfNfc(FakeConfig(printer, options))
-    plugin.zmod_color = objects["zmod_color"]
+    plugin.platform.zmod_color = objects["zmod_color"]
     return plugin, gcode, objects
 
 
@@ -249,10 +250,10 @@ class PluginTest(unittest.TestCase):
 
     def test_material_fallbacks(self):
         valid = ["PLA", "PETG", "ABS"]
-        self.assertEqual(klipper_plugin.resolve_material("PETG-CF", valid), "PETG")
-        self.assertEqual(klipper_plugin.resolve_material("ASA", valid), "ABS")
-        self.assertEqual(klipper_plugin.resolve_material("PCTG", valid), "PETG")
-        self.assertIsNone(klipper_plugin.resolve_material("PEEK", valid))
+        self.assertEqual(zmod.resolve_material("PETG-CF", valid), "PETG")
+        self.assertEqual(zmod.resolve_material("ASA", valid), "ABS")
+        self.assertEqual(zmod.resolve_material("PCTG", valid), "PETG")
+        self.assertIsNone(zmod.resolve_material("PEEK", valid))
 
     def test_ignored_while_printing(self):
         plugin, gcode, objects = make_plugin()
@@ -557,7 +558,7 @@ class QrScanTest(unittest.TestCase):
         self.assertEqual(command[1:3], ["-m", "ffnfc.camera"])
         self.assertIn("/opt/ffmpeg", command)
         self.assertEqual(command[command.index("--time") + 1], "8")
-        self.assertEqual(kw["cwd"], klipper_plugin.PLUGIN_DIR)
+        self.assertEqual(kw["cwd"], klipper_plugin.PACKAGE_DIR)
         self.assertIn("NFC_QR_CANCEL", "".join(gcode.raw))
         with self.assertRaises(CommandError):
             gcode.commands["NFC_QR_SCAN"](FakeGcmd(gcode))   # still running

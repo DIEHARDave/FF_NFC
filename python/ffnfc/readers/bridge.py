@@ -8,7 +8,8 @@ docs/pn5180-bridge.md."""
 import struct
 import time
 
-from ..transport.serial_port import SerialError, SerialPort
+from ..transport.serial_port import SerialError
+from ..transport.usb_serial import make_port
 from .base import ReaderError
 
 
@@ -40,7 +41,7 @@ class SerialBridge(object):
     MAGIC = b"PN5180BRIDGE"
 
     def __init__(self, path, baud=115200):
-        self.port = SerialPort(path, baud)
+        self.port = make_port(path, baud)
         self.path = path
         self.version = None
 
@@ -48,7 +49,11 @@ class SerialBridge(object):
         try:
             self.port.open()
             reply = self._call(self.CMD_HELLO, b"", timeout=0.5)
-        except (SerialError, BridgeError) as exc:
+        except SerialError as exc:
+            # Serial errors already name the port.
+            self.port.close()
+            raise NoBridgeError(str(exc))
+        except BridgeError as exc:
             self.port.close()
             raise NoBridgeError("%s: %s" % (self.path, exc))
         if not reply.startswith(self.MAGIC):

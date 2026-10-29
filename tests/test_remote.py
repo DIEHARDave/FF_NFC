@@ -123,7 +123,7 @@ class EndpointTest(unittest.TestCase):
         self.assertFalse([r for r in self.gcode.raw if "prompt_begin" in r])
         self.assertIsNone(self.plugin.pending)
         # Zmod's color popup after inserting into that slot is skipped.
-        self.assertIn(2, self.plugin._assigned)
+        self.assertIn(2, self.plugin.platform._assigned)
 
     def test_fixed_slot_errors(self):
         tag = type2_tag(text_record("PLA:FF0000"))

@@ -13,7 +13,10 @@ and ends with a full disable. Beeps play in a thread, one at a time; a
 beep asked for while another plays is dropped.
 
 Kiln OS on its own kernel exposes the piezo through sysfs instead, played
-by its ad5x-sound tool, which is used when present.
+by its ad5x-sound tool, which is used when present. On the stock kernel
+Kiln does not ship cmd_pwm, but printers that ran Zmod still have its
+copy; Klipper runs as user klipper there, so the root hook
+(root/ff-nfc-hook.sh) gives it /dev/jz_pwm.
 """
 
 import logging

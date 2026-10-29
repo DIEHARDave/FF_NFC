@@ -10,7 +10,8 @@ import logging
 import time
 
 from ..tag import TECH_ISO14443A
-from ..transport.serial_port import SerialError, SerialPort
+from ..transport.serial_port import SerialError
+from ..transport.usb_serial import make_port
 from .base import CardSession, Reader, ReaderError
 
 LOGGER = logging.getLogger("ff_nfc")
@@ -169,7 +170,7 @@ class Pn532Reader(Reader):
         self._failures = 0
 
     def open(self):
-        self.port = SerialPort(self.path, self.baud)
+        self.port = make_port(self.path, self.baud)
         try:
             self.port.open()
             self.chip = Pn532(self.port)

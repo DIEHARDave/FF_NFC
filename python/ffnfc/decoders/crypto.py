@@ -1,7 +1,7 @@
 """HKDF-SHA256 and AES-128-ECB in pure Python, for the vendor formats whose
 MIFARE keys or payloads are derived or encrypted (Bambu, Snapmaker,
-Creality). Zmod's Python has no cryptography package; these are only run
-on a few blocks per scan, so speed does not matter."""
+Creality). Zmod's and Kiln's Python have no cryptography package; these
+are only run on a few blocks per scan, so speed does not matter."""
 
 import hashlib
 import hmac
