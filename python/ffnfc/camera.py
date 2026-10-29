@@ -8,17 +8,16 @@ finds one or the time is up. The result is one JSON line on stdout:
 {"text": ...} or {"error": ...}.
 
 JPEG decoders, the first available by default:
-  pillow     Pillow, which Kiln OS ships for its Python with libjpeg. Big
-             frames are decoded at 1/2, 1/4 or 1/8 size directly (draft
-             mode), which is much faster than decoding and then scaling.
-Zmod's Python has no Pillow, and the host's libjpeg calls exit() on bad
-data, so there a JPEG decoder runs as one more process per frame:
   turbojpeg  libturbojpeg through Python in Zmod's chroot, which both the
-             AD5X and the Creator 5 have. Decodes at 1/2 or 1/4 size
-             directly when the frame is large.
-  ffmpeg     the Flashforge firmware's ffmpeg, where it has the mjpeg
-             demuxer and rawvideo output (the AD5X's does, the Creator 5's
-             stripped-down build does not).
+             AD5X and the Creator 5 have, in one more process per frame.
+             Decodes at 1/2 or 1/4 size directly when the frame is large.
+  pillow     Pillow: Kiln OS ships it for its Python, and the Flashforge
+             firmware's Python 3.8 has Pillow 7. Big frames are decoded at
+             1/2, 1/4 or 1/8 size directly (draft mode), which is much
+             faster than decoding and then scaling.
+  ffmpeg     an ffmpeg with the mjpeg demuxer and rawvideo output: on PATH,
+             or the Flashforge firmware's (the AD5X's has them, the
+             Creator 5's stripped-down build does not).
 
 Also usable by hand, e.g. with a saved snapshot:
     PYTHONPATH=python python3 -m ffnfc.camera --image label.jpg
@@ -250,16 +249,16 @@ class FfmpegDecoder(object):
 
 
 def make_decoder(kind="auto", chroot=DEFAULT_CHROOT, ffmpeg=""):
-    """The JPEG decoder to use: Pillow when it can read JPEG, else turbojpeg
-    in the chroot when it is there, otherwise ffmpeg."""
-    if kind in ("auto", "pillow") and PillowDecoder.available():
-        return PillowDecoder()
-    if kind == "pillow":
-        raise CameraError("Pillow with JPEG support is not installed")
+    """The JPEG decoder to use: turbojpeg in the chroot when it is there
+    (Zmod), else Pillow when it can read JPEG (Kiln OS), otherwise ffmpeg."""
     if kind in ("auto", "turbojpeg") and TurboJpegDecoder.available(chroot):
         return TurboJpegDecoder(chroot)
     if kind == "turbojpeg":
         raise CameraError("no libturbojpeg and python3 in %s (qr_chroot)" % chroot)
+    if kind in ("auto", "pillow") and PillowDecoder.available():
+        return PillowDecoder()
+    if kind == "pillow":
+        raise CameraError("Pillow with JPEG support is not installed")
     path = find_ffmpeg(ffmpeg)
     if path is None:
         raise CameraError("no JPEG decoder: neither Pillow, libturbojpeg in %s nor ffmpeg"

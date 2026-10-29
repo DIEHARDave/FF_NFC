@@ -223,6 +223,9 @@ class CameraTest(unittest.TestCase):
                 os.makedirs(os.path.join(root, os.path.dirname(name)), exist_ok=True)
                 open(os.path.join(root, name), "w").close()
             self.assertEqual(camera.make_decoder("auto", root).name, "turbojpeg")
+            # Zmod's firmware Python has Pillow too; its chroot still wins.
+            camera.PillowDecoder.available = staticmethod(lambda: True)
+            self.assertEqual(camera.make_decoder("auto", root).name, "turbojpeg")
         finally:
             camera.PillowDecoder.available = original
             shutil.rmtree(root)
@@ -281,7 +284,7 @@ class PillowTest(unittest.TestCase):
         return out.getvalue()
 
     def test_scaling_and_crop(self):
-        decoder = camera.make_decoder("auto")
+        decoder = camera.make_decoder("auto", "/nonexistent")
         self.assertEqual(decoder.name, "pillow")
         pixels = bytes(range(256)) * (2048 * 1536 // 256)
         jpeg = self.jpeg_of(pixels, 2048, 1536)

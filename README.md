@@ -446,7 +446,7 @@ These work without Spoolman. Codes up to version 10 (271 bytes) are read.
 | `qr_scan_time` | `20` | Seconds to keep looking. |
 | `qr_snapshot_url` | Zmod: `http://127.0.0.1:8080/?action=snapshot`, Kiln OS: `http://127.0.0.1:8090/?action=snapshot` | Camera snapshot URL. The defaults are each firmware's first camera. |
 | `qr_width` | Zmod: `1024`, Kiln OS: `640` | Large frames are scaled down towards this width; small codes are read again from a full-resolution crop. |
-| `qr_decoder` | `auto` | JPEG decoder: `pillow` (Kiln OS ships it), `turbojpeg` (libturbojpeg in Zmod's chroot), `ffmpeg`, or `auto` (the first of these that is available). |
+| `qr_decoder` | `auto` | JPEG decoder: `turbojpeg` (libturbojpeg in Zmod's chroot), `pillow` (Kiln OS ships it), `ffmpeg`, or `auto` (the first of these that is available). |
 | `qr_chroot` | `/usr/data/.mod/.zmod` | Zmod: the chroot holding python3 and libturbojpeg. |
 | `qr_ffmpeg` | | Path to ffmpeg; empty finds one on PATH or under `/usr/prog`. |
 
