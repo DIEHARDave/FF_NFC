@@ -225,6 +225,17 @@ class LaneDataTest(unittest.TestCase):
         self.assertEqual(value["spool_name"], "Violet")
         self.assertEqual(value["helix_material"], "PLA")
 
+    def test_zmod_nfc_entry_is_taken_over(self):
+        # Written by zmod_nfc before the rename: the same tag is the same
+        # spool, and the old keys give way to ff_nfc's.
+        existing = {"lane": "0", "spool_name": "Violet", "zmod_nfc_uid": "53",
+                    "zmod_nfc_name": "Violet"}
+        value = lane_data.lane_value(existing, 1, {"material": "PLA", "uid": "53", "name": "x"})
+        self.assertEqual(value["spool_name"], "Violet")
+        self.assertEqual(value["ff_nfc_uid"], "53")
+        self.assertNotIn("zmod_nfc_uid", value)
+        self.assertNotIn("zmod_nfc_name", value)
+
 
 if __name__ == "__main__":
     unittest.main()

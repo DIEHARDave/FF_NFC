@@ -40,6 +40,11 @@ class LaneValueTest(unittest.TestCase):
         value = lane_data.kiln_lane_value(KILN, 1, dict(INFO, spool_id=12))
         self.assertEqual(value["spool_id"], 12)
 
+    def test_kiln_nfc_uid_goes(self):
+        value = lane_data.kiln_lane_value(dict(KILN, kiln_nfc_uid="04AA"), 1, INFO)
+        self.assertNotIn("kiln_nfc_uid", value)
+        self.assertEqual(value["ff_nfc_uid"], "04AA")
+
 
 class FakeMoonraker(lane_data.KilnLaneData):
     def __init__(self, reads):

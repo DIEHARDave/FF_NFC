@@ -3,10 +3,10 @@
 The PN5180 and the RC522 (MFRC522) have no USB interface: both only talk
 SPI. To use either on a printer, a small microcontroller bridges it to USB
 and appears as a USB serial port (CDC-ACM, or a USB-UART chip). The same
-bridge and the same firmware serve both chips. ff_nfc runs the whole chip
+bridge and the same firmware serve both chips. FF_NFC runs the whole chip
 command layer on the printer
-([`ffnfc/readers/pn5180.py`](../ffnfc/readers/pn5180.py),
-[`ffnfc/readers/rc522.py`](../ffnfc/readers/rc522.py)), so the bridge
+([`python/ffnfc/readers/pn5180.py`](../python/ffnfc/readers/pn5180.py),
+[`python/ffnfc/readers/rc522.py`](../python/ffnfc/readers/rc522.py)), so the bridge
 firmware only moves SPI frames.
 
 **Status:** the host side is written. No bridge firmware has been written
@@ -38,7 +38,7 @@ runs first then fails quickly instead of waiting on a floating pin).
 |-------|------------|
 | `SDA` (`NSS`) | the chip-select GPIO |
 | `MOSI`, `MISO`, `SCK` | SPI, mode 0, up to 10 MHz (1-2 MHz is plenty) |
-| `RST` | the reset GPIO (or 3.3 V; ff_nfc soft-resets the chip) |
+| `RST` | the reset GPIO (or 3.3 V; FF_NFC soft-resets the chip) |
 | `3.3V` | 3.3 V. **Not 5 V**: the RC522 is a 3.3 V part, logic included. |
 | `GND` | GND |
 | `IRQ` | not connected |
@@ -71,7 +71,7 @@ Both directions use the same frame:
 
 Request payload: empty.
 Answer payload: `00` followed by `PN5180BRIDGE` and the firmware version as
-ASCII, e.g. `PN5180BRIDGE1.0`. ff_nfc uses this to recognise the bridge
+ASCII, e.g. `PN5180BRIDGE1.0`. FF_NFC uses this to recognise the bridge
 while probing serial ports.
 
 ### 0x02 RESET

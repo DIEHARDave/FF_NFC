@@ -1,13 +1,16 @@
 #!/usr/bin/env python3
 """Read tags without Klipper, to check a reader and see what a tag holds.
 
-On the AD5X, over SSH:
+Over SSH, on Zmod (AD5X, Creator 5):
     chroot /usr/data/.mod/.zmod python3 \\
         /opt/config/mod_data/plugins/ff_nfc/tools/nfc_scan.py --raw
+On Kiln OS:
+    python3 /data/ad5x/plugins/ff_nfc/tools/nfc_scan.py --raw
 
 Stop Klipper's use of the reader first (NFC_DISABLE is not enough: the
-plugin keeps the reader open), e.g. comment out [ff_nfc] and restart, or
-run this before enabling the plugin.
+plugin keeps the reader open), e.g. DISABLE_PLUGIN name=ff_nfc, or run
+this before enabling the plugin. As root it reaches USB readers without
+Kiln's root hook.
 """
 
 import argparse
@@ -17,13 +20,15 @@ import os
 import sys
 import time
 
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.realpath(__file__))), "python"))
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.realpath(__file__))),
+                                "python"))
 
 from ffnfc import decoders  # noqa: E402
 from ffnfc.readers.base import ReaderError  # noqa: E402
 from ffnfc.readers.detect import READER_TYPES, open_reader  # noqa: E402
 from ffnfc.transport import usbfs  # noqa: E402
 from ffnfc.transport.serial_port import usb_serial_ports  # noqa: E402
+from ffnfc.transport.usb_serial import usb_ports  # noqa: E402
 
 
 def list_hardware():
@@ -32,7 +37,7 @@ def list_hardware():
         classes = ",".join("%02x" % i.cls for i in dev.interfaces)
         print("  %s  %s  interfaces %s" % (dev.node, dev.describe(), classes or "-"))
     print("USB serial ports:")
-    for path, vid, pid, product in usb_serial_ports():
+    for path, vid, pid, product in usb_serial_ports() + usb_ports():
         print("  %s  %s:%s %s" % (path, vid, pid, product))
 
 

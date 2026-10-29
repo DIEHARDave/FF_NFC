@@ -2,7 +2,7 @@
 
 Readers on the network, such as
 [LaneTag](https://github.com/DIEHARDave/LaneTag), send tag
-reads to ff_nfc **through Moonraker**. ff_nfc registers Klipper webhooks
+reads to FF_NFC **through Moonraker**. FF_NFC registers Klipper webhooks
 endpoints, and Moonraker publishes every Klipper endpoint on its own HTTP
 API and websocket, so there is no extra port or server on the printer:
 
@@ -23,7 +23,7 @@ whose address is not in `[authorization] trusted_clients` sends an API key
 A reader sends the raw read, not decoded filament data, so the printer
 decodes every format it knows and handles the scan like one from a USB
 reader: Spoolman lookup, the slot prompt on the printer's screen, filament
-insert picking the slot, and lane data.
+insert picking the slot, the slot's material and color, and lane data.
 
 ## POST /printer/ff_nfc/scan
 
@@ -48,7 +48,7 @@ One tag read:
 | `uid` | Tag UID, hex, 4 to 10 bytes. |
 | `kind` | `type2` (NTAG / Ultralight), `mifare_classic`, `type4` (ISO-DEP) or `type5` (ISO 15693). |
 | `memory` | The tag's memory from its first page or block, as on the datasheet. Type 2: pages 0..n. MIFARE Classic: every block (1024 or 4096 bytes); sectors that were not read and sector trailers are zero. Type 5: blocks 0..n. Type 4: empty. At most 8 KiB. |
-| `sector_keys` | MIFARE Classic: which key family opened each sector that was read: `Bambu`, `Creality`, `Snapmaker` or `default`. The vendor decoders only accept data from sectors opened with their family's keys, derived from the UID as in `ffnfc/decoders/vendors.py`. |
+| `sector_keys` | MIFARE Classic: which key family opened each sector that was read: `Bambu`, `Creality`, `Snapmaker` or `default`. The vendor decoders only accept data from sectors opened with their family's keys, derived from the UID as in `python/ffnfc/decoders/vendors.py`. |
 | `ndef` | Type 4: the NDEF file. |
 | `block_size` | Type 5 block size (default 4). |
 | `sak`, `atqa` | Optional, from anticollision. |
@@ -103,8 +103,11 @@ scan's outcome:
 }}
 ```
 
-A 404 from Moonraker means ff_nfc is not installed, is older than this
-API, or Klipper is not running.
+A 404 from Moonraker means FF_NFC is not installed, is older than this
+API, or Klipper is not running. Before it was renamed, FF_NFC was
+zmod_nfc on Zmod and KILN_NFC on Kiln OS; the same API is at
+`/printer/zmod_nfc/...` (object `zmod_nfc`) and `/printer/kiln_nfc/...`
+(object `kiln_nfc`) on printers that still run those.
 
 ## POST /printer/ff_nfc/assign
 

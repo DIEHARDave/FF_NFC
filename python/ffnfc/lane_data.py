@@ -41,7 +41,7 @@ DELAY = 5.0
 KILN_TIMEOUT = 5.0
 KILN_POLL = 0.2
 KILN_WAIT_MAX = 1.4
-# The UID key earlier plugin versions wrote (zmod_nfc, KILN_NFC); dropped
+# The keys earlier plugin versions wrote (zmod_nfc, KILN_NFC); dropped
 # when the entry is written again.
 LEGACY_UID_KEYS = ("zmod_nfc_uid", "kiln_nfc_uid")
 LEGACY_KEYS = LEGACY_UID_KEYS + ("zmod_nfc_name",)
