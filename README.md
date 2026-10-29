@@ -176,23 +176,22 @@ The Klipper section is now `[ff_nfc]` and the plugin is `ff_nfc` on both
 firmwares; the `NFC_*` commands are unchanged, so macros keep working.
 Slots set before keep their Spoolman spools and lane data.
 
-**From zmod_nfc (Zmod):** install FF_NFC before removing zmod_nfc. A
-Klipper restart with a `[zmod_nfc]` section left in `user.cfg` and no
-zmod_nfc, or a `[ff_nfc]` section and no FF_NFC, stops Klipper, and then
-the plugin commands can't run.
+**From zmod_nfc (Zmod):** the two can't be loaded together (they have the
+same commands), and Klipper stops on a `[zmod_nfc]` section in `user.cfg`
+once zmod_nfc is gone, after which the plugin commands can't run. So, in
+this order:
 
-1. Add the section in
-   [`ff_nfc.moonraker.conf.example`](ff_nfc.moonraker.conf.example) to
-   `mod_data/user.moonraker.conf` (keep the `zmod_nfc` one for now), and
+1. If `mod_data/user.cfg` has a `[zmod_nfc]` section, comment it out
+   (`#` in front of each line) for now.
+2. `DISABLE_PLUGIN name=zmod_nfc`
+3. In `mod_data/user.moonraker.conf`, replace the
+   `[update_manager zmod_nfc]` section with the one in
+   [`ff_nfc.moonraker.conf.example`](ff_nfc.moonraker.conf.example), and
    restart Moonraker.
-2. `ENABLE_PLUGIN name=ff_nfc`. Both plugins load for now; only one of
-   them gets the reader.
-3. If `mod_data/user.cfg` has a `[zmod_nfc]` section, rename it to
-   `[ff_nfc]`.
-4. `DISABLE_PLUGIN name=zmod_nfc`
-5. Remove the `[update_manager zmod_nfc]` section from
-   `mod_data/user.moonraker.conf`, restart Moonraker, and delete
-   `mod_data/plugins/zmod_nfc`.
+4. `ENABLE_PLUGIN name=ff_nfc`
+5. If you commented a section out in step 1, put it back as `[ff_nfc]`
+   and `RESTART`.
+6. Delete `mod_data/plugins/zmod_nfc`.
 
 **From KILN_NFC (Kiln OS):**
 
