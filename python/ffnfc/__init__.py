@@ -9,4 +9,4 @@ kernel driver), so no pyserial, libusb, pcscd or pyscard is needed.
 Firmware specifics live in platforms/.
 """
 
-__version__ = "0.2.0"
+__version__ = "0.2.1"
