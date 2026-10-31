@@ -16,7 +16,7 @@ import os
 import re
 
 from ..lane_data import KilnLaneData
-from ..spoolman import spool_uids
+from ..spoolman import is_bound
 from ..tag import normalize_color
 
 UNSET_MATERIALS = ("NONE", "N/A", "?", "")
@@ -160,7 +160,7 @@ class KilnPlatform(object):
             run_gcode("SPOOLMAN_SET_SLOT SLOT=%d SPOOL=%d" % (slot_number, spool["id"]))
         elif slots["current"] in (0, slot_number) or len(slots["slots"]) == 1:
             core._set_active_spool(spool["id"])
-        if core.bind_card_uid and scan.uid and scan.uid not in spool_uids(spool):
+        if core.bind_card_uid and scan.uid and not is_bound(spool, scan.uid):
             core._in_background(core.spoolman.bind_uid, spool, scan.uid)
         respond("NFC: %s is now %s (Spoolman spool %d)" % (label, scan.title(), spool["id"]))
         if self.spoolman_slots is None:

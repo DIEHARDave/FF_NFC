@@ -226,6 +226,24 @@ class PluginTest(unittest.TestCase):
         gcode.commands["NFC_ASSIGN"](FakeGcmd(gcode, SLOT=2))
         self.assertEqual(gcode.in_command, ["SET_SPOOL_ID LANE=E1 SPOOL_ID=5 CARD_UID=%s" % scan.uid])
 
+    def test_afclite_assignment_links_native_tag(self):
+        plugin, gcode, _ = make_plugin(afclite=True)
+        linked = []
+
+        class FakeSpoolman(object):
+            def link_tag(self, spool, uid):
+                linked.append((spool["id"], uid))
+
+        plugin.spoolman = FakeSpoolman()
+        plugin._in_background = lambda fn, *args: fn(*args)
+        scan = plugin._process(type2_tag(text_record("PLA:112233")))
+        scan.spool = {"id": 2, "filament": {"material": "PLA", "color_hex": "112233"},
+                      "extra": {"card_uids": '"%s"' % scan.uid}, "tags": []}
+        plugin._handle_scan(scan)
+        gcode.commands["NFC_ASSIGN"](FakeGcmd(gcode, SLOT=4))
+        self.assertEqual(gcode.in_command, ["SET_SPOOL_ID LANE=E3 SPOOL_ID=2"])
+        self.assertEqual(linked, [(2, scan.uid)])
+
     def test_spool_without_afclite(self):
         plugin, gcode, objects = make_plugin()
         objects["save_variables"] = object()
@@ -372,6 +390,36 @@ class PluginTest(unittest.TestCase):
         del calls[:]
         Fake(refuse_link=True).bind_uid({"id": 76, "extra": {}, "tags": []}, "04AA")
         self.assertIn(("PATCH", "/v1/spool/76", {"extra": {"card_uids": '"04AA"'}}), calls)
+        # Already in card_uids (zmod_afclite wrote it): only the tag link.
+        del calls[:]
+        Fake().bind_uid({"id": 2, "extra": {"card_uids": '"04AA"'}, "tags": []}, "04AA")
+        self.assertEqual(calls, [("POST", "/v1/spool/2/tag", {"uid": "04AA"})])
+        # Linked and in card_uids: nothing to do.
+        del calls[:]
+        Fake().bind_uid({"id": 2, "extra": {"card_uids": '"04AA"'}, "tags": [{"uid": "04aa"}]}, "04AA")
+        self.assertEqual(calls, [])
+
+    def test_created_spool_links_native_tag(self):
+        from ffnfc.spoolman import Spoolman
+        from ffnfc.tag import Filament
+        calls = []
+
+        class Fake(Spoolman):
+            def __init__(self):
+                pass
+
+            def request(self, method, path, query=None, body=None):
+                calls.append((method, path, body))
+                if path == "/v1/field/spool":
+                    return [{"key": "card_uids"}]
+                if method == "GET":
+                    return []
+                if path == "/v1/spool":
+                    return {"id": 78, "extra": body["extra"], "tags": []}
+                return {"id": 1}
+
+        Fake().create_spool(Filament("OpenSpool", material="PLA", color="000000"), "04:ef:f6")
+        self.assertEqual(calls[-1], ("POST", "/v1/spool/78/tag", {"uid": "04EFF6"}))
 
     def _with_zmod_popup(self):
         plugin, gcode, objects = make_plugin()

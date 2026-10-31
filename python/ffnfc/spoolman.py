@@ -54,11 +54,21 @@ def _extra_text(spool, field):
     return str(raw)
 
 
+def linked_uids(spool):
+    """UIDs in Spoolman's own tag list (0.27 and later)."""
+    return [u for u in (normalize_uid(t.get("uid") or "") for t in spool.get("tags") or []
+                        if isinstance(t, dict)) if u]
+
+
 def spool_uids(spool):
     uids = [normalize_uid(u) for u in _extra_text(spool, CARD_UIDS_FIELD).split(",")]
     uids.append(normalize_uid(_extra_text(spool, NFC_ID_FIELD)))
-    uids += [normalize_uid(t.get("uid") or "") for t in spool.get("tags") or [] if isinstance(t, dict)]
-    return [u for u in uids if u]
+    return [u for u in uids if u] + linked_uids(spool)
+
+
+def is_bound(spool, uid):
+    """uid is in card_uids and, where Spoolman has one, its tag list."""
+    return uid in spool_uids(spool) and ("tags" not in spool or uid in linked_uids(spool))
 
 
 def spool_title(spool):
@@ -159,7 +169,8 @@ class Spoolman(object):
         """Link uid in Spoolman's own tag list, where Spoolman has one (its
         spools then carry "tags"). A tag held by another spool or filament
         is left there."""
-        if "tags" not in spool:
+        uid = normalize_uid(uid)
+        if "tags" not in spool or not uid or uid in linked_uids(spool):
             return
         try:
             self.request("POST", "/v1/spool/%d/tag" % spool["id"], body={"uid": uid})
@@ -170,9 +181,13 @@ class Spoolman(object):
         """Add uid to the spool's card_uids, removing it from other spools,
         and to Spoolman's own tag list."""
         uid = normalize_uid(uid)
-        if not uid or uid in spool_uids(spool):
+        if not uid:
             return spool
+        # A UID already in card_uids (written by an older ff_nfc or by
+        # zmod_afclite) still gets linked in the tag list.
         self.link_tag(spool, uid)
+        if uid in spool_uids(spool):
+            return spool
         self.ensure_card_field()
         for other in self.request("GET", "/v1/spool", {"allow_archived": "true"}) or []:
             if other.get("id") != spool["id"] and uid in spool_uids(other):
@@ -236,4 +251,6 @@ class Spoolman(object):
         }
         if filament.weight:
             spool_body["initial_weight"] = filament.weight
-        return self.request("POST", "/v1/spool", body=spool_body)
+        spool = self.request("POST", "/v1/spool", body=spool_body)
+        self.link_tag(spool, uid)
+        return spool
