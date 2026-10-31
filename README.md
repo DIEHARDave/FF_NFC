@@ -1,5 +1,7 @@
 # FF_NFC
 
+> **Parts:** the printers, boards, readers and other gear that go with this project are listed at [projects.die-hard.net/gear](https://projects.die-hard.net/gear) (Amazon affiliate links).
+
 NFC/RFID filament tags and **Spoolman QR labels** for Flashforge printers,
 as one plugin for two firmwares:
 
