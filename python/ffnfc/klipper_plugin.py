@@ -34,7 +34,7 @@ from .decoders.crypto import key_matches
 from .decoders import vendors
 from .readers.base import ReaderError
 from .readers.detect import READER_TYPES, open_reader
-from .spoolman import Spoolman, SpoolmanError, normalize_uid, spool_color, spool_title
+from .spoolman import Spoolman, SpoolmanError, normalize_uid, spool_color, spool_title, tag_format
 from .camera import DECODERS as QR_DECODERS
 from .decoders.ndef import text_message, type2_image
 from .platforms import make_platform
@@ -73,6 +73,10 @@ class Scan(object):
     @property
     def uid(self):
         return self.tag.uid_hex
+
+    @property
+    def tag_format(self):
+        return tag_format(self.tag.kind, self.filament)
 
     @property
     def is_qr(self):
@@ -378,7 +382,8 @@ class FfNfc(object):
                     return scan
             if scan.spool is None and self.auto_create and filament is not None \
                     and filament.material:
-                scan.spool = self.spoolman.create_spool(filament, tag.uid_hex)
+                scan.spool = self.spoolman.create_spool(
+                    filament, tag.uid_hex, tag_format(tag.kind, filament))
                 scan.spoolman_note = "added to Spoolman"
             elif scan.spool is None:
                 scan.spoolman_note = "not in Spoolman"
@@ -677,7 +682,8 @@ class FfNfc(object):
             raise gcmd.error("NFC: the tag is already Spoolman spool %d" % scan.spool["id"])
         if not self._spoolman_available():
             raise gcmd.error("NFC: Spoolman is not configured in Moonraker")
-        scan.spool = self._wait_background(self.spoolman.create_spool, scan.filament, scan.uid)
+        scan.spool = self._wait_background(self.spoolman.create_spool, scan.filament, scan.uid,
+                                           scan.tag_format)
         scan.spoolman_note = ""
         gcmd.respond_info("NFC: added Spoolman spool %d (%s)" % (scan.spool["id"], scan.title()))
         if self.pending is scan:

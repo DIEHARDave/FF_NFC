@@ -71,6 +71,18 @@ def is_bound(spool, uid):
     return uid in spool_uids(spool) and ("tags" not in spool or uid in linked_uids(spool))
 
 
+TAG_KIND_FORMATS = {"type2": "ntag", "mifare_classic": "mifare_classic",
+                    "type4": "type4", "type5": "iso15693"}
+
+
+def tag_format(kind, filament):
+    """Spoolman's tag "format": the decoder that read it (as LaneTag sends
+    it), else the chip family."""
+    if filament is not None and filament.fmt and filament.fmt != "Text":
+        return filament.fmt.lower()
+    return TAG_KIND_FORMATS.get(kind)
+
+
 def spool_title(spool):
     filament = spool.get("filament") or {}
     vendor = (filament.get("vendor") or {}).get("name")
@@ -165,19 +177,22 @@ class Spoolman(object):
             self.request("POST", "/v1/field/spool/" + CARD_UIDS_FIELD,
                          body=CARD_UIDS_FIELD_DEFINITION)
 
-    def link_tag(self, spool, uid):
+    def link_tag(self, spool, uid, fmt=None):
         """Link uid in Spoolman's own tag list, where Spoolman has one (its
         spools then carry "tags"). A tag held by another spool or filament
         is left there."""
         uid = normalize_uid(uid)
         if "tags" not in spool or not uid or uid in linked_uids(spool):
             return
+        body = {"uid": uid}
+        if fmt:
+            body["format"] = fmt
         try:
-            self.request("POST", "/v1/spool/%d/tag" % spool["id"], body={"uid": uid})
+            self.request("POST", "/v1/spool/%d/tag" % spool["id"], body=body)
         except SpoolmanError as exc:
             LOGGER.info("ff_nfc: tag %s not linked to spool %s: %s", uid, spool["id"], exc)
 
-    def bind_uid(self, spool, uid):
+    def bind_uid(self, spool, uid, fmt=None):
         """Add uid to the spool's card_uids, removing it from other spools,
         and to Spoolman's own tag list."""
         uid = normalize_uid(uid)
@@ -185,7 +200,7 @@ class Spoolman(object):
             return spool
         # A UID already in card_uids (written by an older ff_nfc or by
         # zmod_afclite) still gets linked in the tag list.
-        self.link_tag(spool, uid)
+        self.link_tag(spool, uid, fmt)
         if uid in spool_uids(spool):
             return spool
         self.ensure_card_field()
@@ -200,7 +215,7 @@ class Spoolman(object):
         return self.request("PATCH", "/v1/spool/%d" % spool["id"], body={
             "extra": {CARD_UIDS_FIELD: json.dumps(",".join(uids))}})
 
-    def create_spool(self, filament, uid):
+    def create_spool(self, filament, uid, fmt=None):
         """Vendor, filament and spool for a decoded tag, reusing an existing
         vendor and filament with the same name, material and color."""
         vendor_id = None
@@ -252,5 +267,5 @@ class Spoolman(object):
         if filament.weight:
             spool_body["initial_weight"] = filament.weight
         spool = self.request("POST", "/v1/spool", body=spool_body)
-        self.link_tag(spool, uid)
+        self.link_tag(spool, uid, fmt)
         return spool

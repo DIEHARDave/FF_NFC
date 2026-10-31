@@ -231,8 +231,8 @@ class PluginTest(unittest.TestCase):
         linked = []
 
         class FakeSpoolman(object):
-            def link_tag(self, spool, uid):
-                linked.append((spool["id"], uid))
+            def link_tag(self, spool, uid, fmt=None):
+                linked.append((spool["id"], uid, fmt))
 
         plugin.spoolman = FakeSpoolman()
         plugin._in_background = lambda fn, *args: fn(*args)
@@ -242,7 +242,7 @@ class PluginTest(unittest.TestCase):
         plugin._handle_scan(scan)
         gcode.commands["NFC_ASSIGN"](FakeGcmd(gcode, SLOT=4))
         self.assertEqual(gcode.in_command, ["SET_SPOOL_ID LANE=E3 SPOOL_ID=2"])
-        self.assertEqual(linked, [(2, scan.uid)])
+        self.assertEqual(linked, [(2, scan.uid, "ntag")])   # a plain text tag on an NTAG
 
     def test_spool_without_afclite(self):
         plugin, gcode, objects = make_plugin()
@@ -418,8 +418,16 @@ class PluginTest(unittest.TestCase):
                     return {"id": 78, "extra": body["extra"], "tags": []}
                 return {"id": 1}
 
-        Fake().create_spool(Filament("OpenSpool", material="PLA", color="000000"), "04:ef:f6")
-        self.assertEqual(calls[-1], ("POST", "/v1/spool/78/tag", {"uid": "04EFF6"}))
+        Fake().create_spool(Filament("OpenSpool", material="PLA", color="000000"), "04:ef:f6", "openspool")
+        self.assertEqual(calls[-1], ("POST", "/v1/spool/78/tag", {"uid": "04EFF6", "format": "openspool"}))
+
+    def test_tag_format_matches_lanetag(self):
+        from ffnfc.spoolman import tag_format
+        from ffnfc.tag import Filament
+        self.assertEqual(tag_format("mifare_classic", Filament("Snapmaker", material="PLA")), "snapmaker")
+        self.assertEqual(tag_format("type2", Filament("Text", material="PLA")), "ntag")
+        self.assertEqual(tag_format("type5", None), "iso15693")
+        self.assertIsNone(tag_format("unknown", None))
 
     def _with_zmod_popup(self):
         plugin, gcode, objects = make_plugin()

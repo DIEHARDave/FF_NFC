@@ -165,7 +165,7 @@ class ZmodPlatform(object):
             # zmod_afclite only writes card_uids; Spoolman's own tag list
             # is linked here.
             if core.bind_card_uid and scan.uid and core.spoolman is not None:
-                core._in_background(core.spoolman.link_tag, spool, scan.uid)
+                core._in_background(core.spoolman.link_tag, spool, scan.uid, scan.tag_format)
             respond("NFC: %s is now Spoolman spool %d (%s)" % (label, spool["id"], scan.title()))
             self.write_lane_data(scan, slot_number,
                                  resolve_material(scan.material(), slots["valid_types"]),
@@ -197,7 +197,7 @@ class ZmodPlatform(object):
             if slots["current"] in (0, slot_number) or len(slots["slots"]) == 1:
                 core._set_active_spool(spool["id"])
             if core.bind_card_uid and scan.uid and not is_bound(spool, scan.uid):
-                core._in_background(core.spoolman.bind_uid, spool, scan.uid)
+                core._in_background(core.spoolman.bind_uid, spool, scan.uid, scan.tag_format)
             respond("NFC: %s is now %s (Spoolman spool %d)" % (label, scan.title(), spool["id"]))
         else:
             respond("NFC: %s is now %s #%s" % (label, material or "?", zmod_color))

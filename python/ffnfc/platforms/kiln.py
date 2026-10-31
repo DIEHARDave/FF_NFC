@@ -161,7 +161,7 @@ class KilnPlatform(object):
         elif slots["current"] in (0, slot_number) or len(slots["slots"]) == 1:
             core._set_active_spool(spool["id"])
         if core.bind_card_uid and scan.uid and not is_bound(spool, scan.uid):
-            core._in_background(core.spoolman.bind_uid, spool, scan.uid)
+            core._in_background(core.spoolman.bind_uid, spool, scan.uid, scan.tag_format)
         respond("NFC: %s is now %s (Spoolman spool %d)" % (label, scan.title(), spool["id"]))
         if self.spoolman_slots is None:
             respond("NFC: turn on Kiln's spoolman plugin (INSTALL_PLUGIN NAME=spoolman"
