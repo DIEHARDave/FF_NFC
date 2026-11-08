@@ -169,12 +169,19 @@ class FakeConfig(object):
         return []
 
 
-def make_plugin(options=None, tools=1, palette=None, afclite=False):
+class FakeZmodAfc(object):
+    def __init__(self, enabled):
+        self.enabled = enabled
+
+
+def make_plugin(options=None, tools=1, palette=None, afclite=False, zmod_afc=None):
     gcode = FakeGcode()
     objects = {"gcode": gcode, "webhooks": FakeWebhooks(),
                "zmod_color": FakeZmodColor(tools, palette)}
     if afclite:
         objects["zmod_afclite"] = object()
+    if zmod_afc is not None:
+        objects["zmod_afc"] = FakeZmodAfc(zmod_afc)
     printer = FakePrinter(objects)
     # No lane_data writes to a Moonraker that is not there.
     options = dict({"lane_data": False}, **(options or {}))
@@ -243,6 +250,33 @@ class PluginTest(unittest.TestCase):
         gcode.commands["NFC_ASSIGN"](FakeGcmd(gcode, SLOT=4))
         self.assertEqual(gcode.in_command, ["SET_SPOOL_ID LANE=E3 SPOOL_ID=2"])
         self.assertEqual(linked, [(2, scan.uid, "ntag")])   # a plain text tag on an NTAG
+
+    def test_builtin_afc_handles_spoolman_spools(self):
+        plugin, gcode, _ = make_plugin(zmod_afc=True)
+        bound = []
+
+        class FakeSpoolman(object):
+            def bind_uid(self, spool, uid, fmt=None):
+                bound.append((spool["id"], uid, fmt))
+
+        plugin.spoolman = FakeSpoolman()
+        plugin._in_background = lambda fn, *args: fn(*args)
+        scan = plugin._process(type2_tag(text_record("PLA:112233")))
+        scan.spool = {"id": 5, "filament": {"material": "PLA", "color_hex": "112233"}, "extra": {}}
+        plugin._handle_scan(scan)
+        gcode.commands["NFC_ASSIGN"](FakeGcmd(gcode, SLOT=2))
+        self.assertEqual(gcode.in_command, ["SET_SPOOL_ID LANE=lane2 SPOOL_ID=5"])
+        self.assertEqual(bound, [(5, scan.uid, "ntag")])
+
+    def test_builtin_afc_turned_off(self):
+        plugin, gcode, objects = make_plugin(zmod_afc=False)
+        objects["save_variables"] = object()
+        plugin.bind_card_uid = False
+        scan = plugin._process(type2_tag(text_record("PLA:112233")))
+        scan.spool = {"id": 8, "filament": {"material": "PETG", "color_hex": "445566"}, "extra": {}}
+        plugin._handle_scan(scan)
+        gcode.commands["NFC_ASSIGN"](FakeGcmd(gcode, SLOT=1))
+        self.assertEqual(gcode.in_command[0], "CHANGE_ZCOLOR SLOT=1 HEX=445566 TYPE=PETG SILENT=1")
 
     def test_spool_without_afclite(self):
         plugin, gcode, objects = make_plugin()

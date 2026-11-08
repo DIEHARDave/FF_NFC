@@ -1,6 +1,7 @@
 """Zmod (Flashforge AD5X, Creator 5 Pro): slots come from Zmod's zmod_color
-object and are set with CHANGE_ZCOLOR, or through zmod_afclite's
-SET_SPOOL_ID when that plugin is loaded and the spool is in Spoolman.
+object and are set with CHANGE_ZCOLOR, or through the AFC panel's
+SET_SPOOL_ID when the spool is in Spoolman: Zmod's own (zmod_afc, Zmod
+1.7.5 and later) while it is on, or the older zmod_afclite plugin.
 
 After a filament insert Zmod runs RUN_ZCOLOR SLOT=<n> HIDE=1, a popup to
 pick the slot's color and material; it is wrapped so slots just set from a
@@ -154,18 +155,29 @@ class ZmodPlatform(object):
         self._assigned[slot_number] = core.reactor.monotonic()
         spool = scan.spool
         afclite = self.printer.lookup_object("zmod_afclite", None)
-        if spool is not None and afclite is not None:
-            # zmod_afclite tracks per-lane spools, writes the spool's color
+        # Zmod's own AFC panel (zmod_afc, Zmod 1.7.5 and later), while it is
+        # turned on (SAVE_ZMOD_DATA AFC=1).
+        afc = self.printer.lookup_object("zmod_afc", None)
+        builtin_afc = afclite is None and getattr(afc, "enabled", False) is True
+        if spool is not None and (afclite is not None or builtin_afc):
+            # The AFC panel tracks per-lane spools, writes the spool's color
             # and material into Zmod and keeps Moonraker's active spool on
             # the loaded lane.
-            cmd = "SET_SPOOL_ID LANE=E%d SPOOL_ID=%d" % (slot_number - 1, spool["id"])
-            if core.bind_card_uid and scan.uid and scan.uid not in spool_uids(spool):
-                cmd += " CARD_UID=%s" % scan.uid
-            run_gcode(cmd)
-            # zmod_afclite only writes card_uids; Spoolman's own tag list
-            # is linked here.
-            if core.bind_card_uid and scan.uid and core.spoolman is not None:
-                core._in_background(core.spoolman.link_tag, spool, scan.uid, scan.tag_format)
+            if afclite is not None:
+                cmd = "SET_SPOOL_ID LANE=E%d SPOOL_ID=%d" % (slot_number - 1, spool["id"])
+                if core.bind_card_uid and scan.uid and scan.uid not in spool_uids(spool):
+                    cmd += " CARD_UID=%s" % scan.uid
+                run_gcode(cmd)
+                # zmod_afclite only writes card_uids; Spoolman's own tag list
+                # is linked here.
+                if core.bind_card_uid and scan.uid and core.spoolman is not None:
+                    core._in_background(core.spoolman.link_tag, spool, scan.uid, scan.tag_format)
+            else:
+                run_gcode("SET_SPOOL_ID LANE=lane%d SPOOL_ID=%d" % (slot_number, spool["id"]))
+                # zmod_afc's CARD_UID only looks a tag up, so the tag is
+                # bound to the spool here.
+                if core.bind_card_uid and scan.uid and not is_bound(spool, scan.uid):
+                    core._in_background(core.spoolman.bind_uid, spool, scan.uid, scan.tag_format)
             respond("NFC: %s is now Spoolman spool %d (%s)" % (label, spool["id"], scan.title()))
             self.write_lane_data(scan, slot_number,
                                  resolve_material(scan.material(), slots["valid_types"]),
