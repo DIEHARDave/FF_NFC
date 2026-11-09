@@ -376,6 +376,19 @@ class PluginTest(unittest.TestCase):
         self._assign(plugin, gcode, 1, {"id": 5, "extra": {}, "filament": {"material": "PLA"}})
         self.assertEqual(gcode.in_command, ["SET_SPOOL_ID LANE=lane1 SPOOL_ID=5"])
         self.assertIn("ENABLE=0", gcode.info[-1])
+        self.assertIn("update KILN_AFC", gcode.info[-1])
+
+    def test_afc_syncing_spools_needs_no_warning(self):
+        for sync, slots, warned in ((True, object(), False), (True, None, True),
+                                    (False, object(), True)):
+            plugin, gcode, objects, _ = self._afc_plugin(spoolman_slots=True)
+            unit = objects["AFC"].units["IFS"]
+            unit.sync_spools = sync
+            unit.spool_slots = slots
+            self._assign(plugin, gcode, 1, {"id": 5, "extra": {},
+                                            "filament": {"material": "PLA"}})
+            self.assertEqual(any("ENABLE=0" in line for line in gcode.info), warned,
+                             (sync, slots))
 
     def test_afc_tag_without_a_spool(self):
         plugin, gcode, _, written = self._afc_plugin({2: 7}, lane_data=True)

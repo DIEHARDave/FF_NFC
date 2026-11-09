@@ -143,21 +143,24 @@ class KilnPlatform(object):
     def slot_word(self, slots):
         return "IFS slot"
 
-    def afc_lane(self, slot_number):
-        """The AFC lane on this IFS slot when KILN_AFC (AFC with an AFC_IFS
-        unit) runs, else None."""
+    def afc_unit_lane(self, slot_number):
+        """(AFC_IFS unit, AFC lane) on this IFS slot when KILN_AFC (AFC with
+        an AFC_IFS unit) runs, else (None, None)."""
         afc = self.printer.lookup_object("AFC", None)
         units = getattr(afc, "units", None)
         if not isinstance(units, dict):
-            return None
+            return None, None
         for unit in units.values():
             find = getattr(unit, "_lane_for_slot", None)
             if find is None:
                 continue
             lane = find(slot_number)
             if lane is not None:
-                return lane
-        return None
+                return unit, lane
+        return None, None
+
+    def afc_lane(self, slot_number):
+        return self.afc_unit_lane(slot_number)[1]
 
     def _check_later(self, slot_number, spool_id, label):
         """AFC fetches a spool from Spoolman after SET_SPOOL_ID returns and
@@ -187,7 +190,7 @@ class KilnPlatform(object):
     def assign(self, scan, slot_number, slots, label, respond, run_gcode):
         core = self.core
         spool = scan.spool
-        afc_lane = self.afc_lane(slot_number)
+        afc_unit, afc_lane = self.afc_unit_lane(slot_number)
         lane = afc_lane.name if afc_lane is not None else None
         if lane is not None and spool is not None:
             # AFC takes the spool's material, color and weight from Spoolman,
@@ -214,9 +217,15 @@ class KilnPlatform(object):
                 core._in_background(core.spoolman.bind_uid, spool, scan.uid, scan.tag_format)
             respond("NFC: %s (%s) is now %s (Spoolman spool %d)"
                     % (label, lane, scan.title(), spool["id"]))
-            if self.spoolman_slots is not None:
-                respond("NFC: AFC sets the active spool; turn off Kiln's spoolman plugin"
-                        " (INSTALL_PLUGIN NAME=spoolman ENABLE=0) so only one does")
+            syncs = (getattr(afc_unit, "sync_spools", False) is True
+                     and getattr(afc_unit, "spool_slots", None) is not None)
+            if self.spoolman_slots is not None and not syncs:
+                # KILN_AFC before its sync_spools, or with it off: both set
+                # the active spool, from lists that drift apart.
+                respond("NFC: Kiln's spoolman plugin and AFC both set the active spool;"
+                        " update KILN_AFC (it keeps them in step) or turn the plugin off"
+                        " (INSTALL_PLUGIN NAME=spoolman ENABLE=0). Spoolman tracking stays"
+                        " on through Moonraker either way.")
             return
         if lane is not None and getattr(afc_lane, "spool_id", None) is not None:
             # A tag without a Spoolman spool: the lane's old spool goes.

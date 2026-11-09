@@ -323,9 +323,11 @@ color and weight from Spoolman, sets Moonraker's active spool when the lane
 loads and writes the lane data; KILN_AFC passes material and color on to
 Kiln. A spool still on another lane is taken off that lane first. A tag
 without a Spoolman spool clears the lane's old spool and sets the slot with
-`IFS_SET_MATERIAL`, which KILN_AFC copies into the lane. Turn Kiln's
-spoolman plugin off (`INSTALL_PLUGIN NAME=spoolman ENABLE=0`) so that only
-AFC sets the active spool.
+`IFS_SET_MATERIAL`, which KILN_AFC copies into the lane. Kiln's spoolman
+plugin can stay on: KILN_AFC keeps its slot spools the same as AFC's lanes
+(`sync_spools`), so both set the same active spool. With an older KILN_AFC,
+FF_NFC says to update it or turn the plugin off. Either way Spoolman
+tracking itself runs through Moonraker's `[spoolman]`.
 
 Two Snapmaker spools assigned from their tags to IFS lanes E2 and E3, in
 zmod_afclite's AFC panel (Zmod's own panel names them lane3 and lane4) in Mainsail. Hovering over a lane's spool shows its
