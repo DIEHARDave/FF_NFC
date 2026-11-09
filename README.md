@@ -32,6 +32,7 @@ QR label ──► camera ──► decode (Spoolman label, OpenSpool, text) ─
          ──► Zmod:     slot color + material  (+ Spoolman spool via the AFC panel)
              Kiln OS:  IFS_SET_MATERIAL type, color, temperature
                        (+ SPOOLMAN_SET_SLOT with Kiln's spoolman plugin)
+             Kiln OS + KILN_AFC:  Spoolman spool via AFC's SET_SPOOL_ID
 ```
 
 FF_NFC was **zmod_nfc** (Zmod) and **KILN_NFC** (Kiln OS) until v0.2.0. To
@@ -315,6 +316,17 @@ slot keeps its spool, and the spool becomes Moonraker's active spool
 whenever that slot loads. Without it, the spool is made active only when
 its slot is the one loaded at the time.
 
+On **Kiln OS** with **[KILN_AFC](https://github.com/DIEHARDave/KILN_AFC)**
+(the full AFC on the IFS), a Spoolman spool goes to the slot's AFC lane with
+`SET_SPOOL_ID`, as on Zmod: AFC keeps the lane's spool, takes its material,
+color and weight from Spoolman, sets Moonraker's active spool when the lane
+loads and writes the lane data; KILN_AFC passes material and color on to
+Kiln. A spool still on another lane is taken off that lane first. A tag
+without a Spoolman spool clears the lane's old spool and sets the slot with
+`IFS_SET_MATERIAL`, which KILN_AFC copies into the lane. Turn Kiln's
+spoolman plugin off (`INSTALL_PLUGIN NAME=spoolman ENABLE=0`) so that only
+AFC sets the active spool.
+
 Two Snapmaker spools assigned from their tags to IFS lanes E2 and E3, in
 zmod_afclite's AFC panel (Zmod's own panel names them lane3 and lane4) in Mainsail. Hovering over a lane's spool shows its
 Spoolman details:
@@ -337,6 +349,7 @@ the AD5X's `lane1`..`lane4` and the Creator 5's `T0`..`T3` keys alike. Set
   mistakes for one of its own, so HelixScreen would ignore the change and
   keep showing a color once picked on its screen. FF_NFC rewrites the
   record right after Kiln does, so HelixScreen shows the scanned spool.
+  With KILN_AFC, AFC writes the record and FF_NFC leaves it alone.
 
 ## Network readers
 

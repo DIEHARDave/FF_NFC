@@ -9,6 +9,12 @@ after an assignment the slot's record is written once more
 (lane_data.KilnLaneData) so HelixScreen takes the scanned spool over a
 color picked on its screen.
 
+With KILN_AFC (the full AFC on the IFS), a Spoolman spool goes to the
+slot's AFC lane with SET_SPOOL_ID instead: AFC then keeps the lane's spool,
+sets the active spool and writes lane_data, and its AFC_IFS unit passes
+the spool's material and color on to Kiln. A tag without a spool still
+uses IFS_SET_MATERIAL, which AFC_IFS copies into the lane.
+
 USB readers and the speaker need a root hook (root/ff-nfc-hook.sh), which
 install.sh puts in place; NFC_STATUS says when it is missing or old."""
 
@@ -126,9 +132,54 @@ class KilnPlatform(object):
     def slot_word(self, slots):
         return "IFS slot"
 
+    def afc_lane(self, slot_number):
+        """The AFC lane on this IFS slot when KILN_AFC (AFC with an AFC_IFS
+        unit) runs, else None."""
+        afc = self.printer.lookup_object("AFC", None)
+        units = getattr(afc, "units", None)
+        if not isinstance(units, dict):
+            return None
+        for unit in units.values():
+            find = getattr(unit, "_lane_for_slot", None)
+            if find is None:
+                continue
+            lane = find(slot_number)
+            if lane is not None:
+                return lane
+        return None
+
+    def afc_lanes(self):
+        afc = self.printer.lookup_object("AFC", None)
+        lanes = getattr(afc, "lanes", None)
+        return list(lanes.values()) if isinstance(lanes, dict) else []
+
     def assign(self, scan, slot_number, slots, label, respond, run_gcode):
         core = self.core
         spool = scan.spool
+        afc_lane = self.afc_lane(slot_number)
+        lane = afc_lane.name if afc_lane is not None else None
+        if lane is not None and spool is not None:
+            # AFC takes the spool's material, color and weight from Spoolman,
+            # makes it the active spool when the lane loads and writes
+            # lane_data; AFC_IFS passes material and color on to Kiln.
+            for other in self.afc_lanes():
+                if other is not afc_lane and getattr(other, "spool_id", None) == spool["id"]:
+                    # AFC refuses a spool that is still on another lane: it
+                    # was moved, so that lane loses it.
+                    run_gcode("SET_SPOOL_ID LANE=%s SPOOL_ID=" % other.name)
+                    respond("NFC: spool %d left %s" % (spool["id"], other.name))
+            run_gcode("SET_SPOOL_ID LANE=%s SPOOL_ID=%d" % (lane, spool["id"]))
+            if core.bind_card_uid and scan.uid and not is_bound(spool, scan.uid):
+                core._in_background(core.spoolman.bind_uid, spool, scan.uid, scan.tag_format)
+            respond("NFC: %s (%s) is now %s (Spoolman spool %d)"
+                    % (label, lane, scan.title(), spool["id"]))
+            if self.spoolman_slots is not None:
+                respond("NFC: AFC sets the active spool; turn off Kiln's spoolman plugin"
+                        " (INSTALL_PLUGIN NAME=spoolman ENABLE=0) so only one does")
+            return
+        if lane is not None and getattr(afc_lane, "spool_id", None) is not None:
+            # A tag without a Spoolman spool: the lane's old spool goes.
+            run_gcode("SET_SPOOL_ID LANE=%s SPOOL_ID=" % lane)
         current = slots["slots"][slot_number]
         material = kiln_material(scan.material())
         if material is None and scan.material():
@@ -145,11 +196,14 @@ class KilnPlatform(object):
             if temp:
                 cmd += " TEMP=%d" % temp
             run_gcode(cmd)
-            info = core._lane_info(scan, material or current["material"],
-                                   color or current["color"])
-            if temp:
-                info["nozzle_temp"] = temp
-            core._write_lane_data(slot_number, info)
+            if lane is None:
+                # With AFC, AFC_IFS copies the slot into the lane and AFC
+                # writes lane_data.
+                info = core._lane_info(scan, material or current["material"],
+                                       color or current["color"])
+                if temp:
+                    info["nozzle_temp"] = temp
+                core._write_lane_data(slot_number, info)
         if spool is None:
             what = (material or current["material"] or "?") + (" #" + color if color else "")
             respond("NFC: %s is now %s" % (label, what))

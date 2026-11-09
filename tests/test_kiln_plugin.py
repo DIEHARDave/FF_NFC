@@ -318,6 +318,88 @@ class PluginTest(unittest.TestCase):
                           info["spool_id"], info["vendor"]),
                          ("PLA", "112233", 215, 60, 5, "Sunlu"))
 
+    def _afc_plugin(self, lanes=None, spoolman_slots=False, lane_data=False):
+        lanes = lanes or {}
+
+        class Lane(object):
+            def __init__(self, name, spool_id=None):
+                self.name = name
+                self.spool_id = spool_id
+
+        afc_lanes = {"lane%d" % n: Lane("lane%d" % n, lanes.get(n)) for n in range(1, 5)}
+
+        class Unit(object):
+            def _lane_for_slot(self, slot):
+                return afc_lanes.get("lane%d" % slot)
+
+        class Afc(object):
+            units = {"IFS": Unit()}
+
+        Afc.lanes = afc_lanes
+        plugin, gcode, objects = make_plugin({"lane_data": lane_data},
+                                             spoolman_slots=spoolman_slots)
+        objects["AFC"] = Afc()
+        plugin.bind_card_uid = False
+        written = []
+        if lane_data:
+            plugin.lane_data.write_later = lambda slot, info: written.append(slot)
+        return plugin, gcode, objects, written
+
+    def _assign(self, plugin, gcode, slot, spool=None):
+        scan = plugin._process(type2_tag(text_record("PLA:112233")))
+        scan.spool = spool
+        plugin._handle_scan(scan)
+        gcode.commands["NFC_ASSIGN"](FakeGcmd(gcode, SLOT=slot))
+
+    def test_afc_gets_the_spool(self):
+        plugin, gcode, objects, written = self._afc_plugin(lane_data=True)
+        self._assign(plugin, gcode, 2, {"id": 5, "extra": {},
+                                        "filament": {"material": "PLA", "color_hex": "112233"}})
+        self.assertEqual(gcode.in_command, ["SET_SPOOL_ID LANE=lane2 SPOOL_ID=5"])
+        self.assertEqual(written, [])                     # AFC writes lane_data
+        self.assertEqual(objects["webhooks"].calls, [])  # AFC sets the active spool
+        self.assertIn("Slot 2 (lane2)", gcode.info[-1])
+
+    def test_afc_spool_moved_from_another_lane(self):
+        plugin, gcode, _, _ = self._afc_plugin({3: 5})
+        self._assign(plugin, gcode, 2, {"id": 5, "extra": {}, "filament": {"material": "PLA"}})
+        self.assertEqual(gcode.in_command, ["SET_SPOOL_ID LANE=lane3 SPOOL_ID=",
+                                            "SET_SPOOL_ID LANE=lane2 SPOOL_ID=5"])
+
+    def test_afc_same_lane_keeps_its_spool(self):
+        plugin, gcode, _, _ = self._afc_plugin({2: 5})
+        self._assign(plugin, gcode, 2, {"id": 5, "extra": {}, "filament": {"material": "PLA"}})
+        self.assertEqual(gcode.in_command, ["SET_SPOOL_ID LANE=lane2 SPOOL_ID=5"])
+
+    def test_afc_warns_about_the_spoolman_plugin(self):
+        plugin, gcode, _, _ = self._afc_plugin(spoolman_slots=True)
+        self._assign(plugin, gcode, 1, {"id": 5, "extra": {}, "filament": {"material": "PLA"}})
+        self.assertEqual(gcode.in_command, ["SET_SPOOL_ID LANE=lane1 SPOOL_ID=5"])
+        self.assertIn("ENABLE=0", gcode.info[-1])
+
+    def test_afc_tag_without_a_spool(self):
+        plugin, gcode, _, written = self._afc_plugin({2: 7}, lane_data=True)
+        self._assign(plugin, gcode, 2)
+        self.assertEqual(gcode.in_command, ["SET_SPOOL_ID LANE=lane2 SPOOL_ID=",
+                                            "IFS_SET_MATERIAL SLOT=2 TYPE=PLA COLOR=112233"])
+        self.assertEqual(written, [])
+
+    def test_afc_tag_without_a_spool_on_an_empty_lane(self):
+        plugin, gcode, _, _ = self._afc_plugin()
+        self._assign(plugin, gcode, 3)
+        self.assertEqual(gcode.in_command, ["IFS_SET_MATERIAL SLOT=3 TYPE=PLA COLOR=112233"])
+
+    def test_afc_without_an_ifs_unit(self):
+        plugin, gcode, objects = make_plugin()
+        plugin.bind_card_uid = False
+
+        class Afc(object):
+            units = {"BoxTurtle": object()}
+            lanes = {}
+        objects["AFC"] = Afc()
+        self._assign(plugin, gcode, 2, {"id": 5, "extra": {}, "filament": {"material": "PLA"}})
+        self.assertEqual(gcode.in_command[0], "IFS_SET_MATERIAL SLOT=2 TYPE=PLA")
+
     def test_material_names(self):
         self.assertEqual(kiln.kiln_material("asa"), "ASA")
         self.assertEqual(kiln.kiln_material("PETG-CF"), "PETG-CF")
