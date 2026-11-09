@@ -285,6 +285,9 @@ class FfNfc(object):
         if self._timer is not None:
             self.reactor.unregister_timer(self._timer)
             self._timer = None
+        disconnect = getattr(self.platform, "disconnect", None)
+        if disconnect is not None:
+            disconnect()
 
     # Reader thread --------------------------------------------------------
 

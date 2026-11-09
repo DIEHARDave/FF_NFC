@@ -37,6 +37,9 @@ QR_URL = "http://127.0.0.1:8090/?action=snapshot"
 # Kiln's 1280x720 camera frames are then decoded at half size (draft
 # mode): about 1 s per frame on the AD5X instead of 5 s at full size.
 QR_WIDTH = 640
+# Seconds after SET_SPOOL_ID before the AFC lane is checked for the spool;
+# AFC's Spoolman lookup took well under a second on the AD5X.
+AFC_CHECK_DELAY = 5.0
 # The [ff_nfc] options only this platform reads.
 OPTIONS = ("set_temperature",)
 
@@ -91,9 +94,17 @@ class KilnPlatform(object):
         self.ifs = None
         self.ifs_materials = None
         self.spoolman_slots = None   # Kiln's spoolman plugin
+        self._checks = []            # (slot, spool ID, label) given to AFC
+        self._check_timer = None
 
     def connect(self):
         pass
+
+    def disconnect(self):
+        if self._check_timer is not None:
+            self.core.reactor.unregister_timer(self._check_timer)
+            self._check_timer = None
+        self._checks = []
 
     def ready(self):
         self.ifs = self.printer.lookup_object("ifs", None)
@@ -148,6 +159,26 @@ class KilnPlatform(object):
                 return lane
         return None
 
+    def _check_later(self, slot_number, spool_id, label):
+        """AFC fetches a spool from Spoolman after SET_SPOOL_ID returns and
+        may refuse it then; say so if the lane does not have it AFC_CHECK_DELAY
+        seconds later."""
+        reactor = self.core.reactor
+        self._checks.append((slot_number, spool_id, label))
+        if self._check_timer is None:
+            self._check_timer = reactor.register_timer(self._check_spools)
+        reactor.update_timer(self._check_timer, reactor.monotonic() + AFC_CHECK_DELAY)
+
+    def _check_spools(self, eventtime):
+        checks, self._checks = self._checks, []
+        for slot_number, spool_id, label in checks:
+            lane = self.afc_lane(slot_number)
+            if lane is not None and getattr(lane, "spool_id", None) != spool_id:
+                self.core.gcode.respond_info(
+                    "NFC: AFC did not take Spoolman spool %d for %s (%s); klippy.log has"
+                    " AFC's reason" % (spool_id, label, lane.name))
+        return self.core.reactor.NEVER
+
     def afc_lanes(self):
         afc = self.printer.lookup_object("AFC", None)
         lanes = getattr(afc, "lanes", None)
@@ -162,6 +193,15 @@ class KilnPlatform(object):
             # AFC takes the spool's material, color and weight from Spoolman,
             # makes it the active spool when the lane loads and writes
             # lane_data; AFC_IFS passes material and color on to Kiln.
+            weight = spool.get("remaining_weight", 1)
+            afc = self.printer.lookup_object("AFC", None)
+            if (not getattr(afc, "disable_weight_check", False)
+                    and (weight is None or weight <= 0)):
+                # AFC refuses it and clears the lane: leave the lane alone.
+                respond("NFC: Spoolman spool %d (%s) has no filament left, which AFC refuses;"
+                        " %s is left as it was. Set the spool's remaining weight in Spoolman"
+                        " and scan it again." % (spool["id"], scan.title(), label))
+                return
             for other in self.afc_lanes():
                 if other is not afc_lane and getattr(other, "spool_id", None) == spool["id"]:
                     # AFC refuses a spool that is still on another lane: it
@@ -169,6 +209,7 @@ class KilnPlatform(object):
                     run_gcode("SET_SPOOL_ID LANE=%s SPOOL_ID=" % other.name)
                     respond("NFC: spool %d left %s" % (spool["id"], other.name))
             run_gcode("SET_SPOOL_ID LANE=%s SPOOL_ID=%d" % (lane, spool["id"]))
+            self._check_later(slot_number, spool["id"], label)
             if core.bind_card_uid and scan.uid and not is_bound(spool, scan.uid):
                 core._in_background(core.spoolman.bind_uid, spool, scan.uid, scan.tag_format)
             respond("NFC: %s (%s) is now %s (Spoolman spool %d)"

@@ -389,6 +389,47 @@ class PluginTest(unittest.TestCase):
         self._assign(plugin, gcode, 3)
         self.assertEqual(gcode.in_command, ["IFS_SET_MATERIAL SLOT=3 TYPE=PLA COLOR=112233"])
 
+    def test_afc_refuses_an_empty_spool(self):
+        for weight in (0, None):
+            plugin, gcode, objects, _ = self._afc_plugin({3: 5})
+            self._assign(plugin, gcode, 2, {"id": 5, "remaining_weight": weight, "extra": {},
+                                            "filament": {"material": "PLA"}})
+            # Not even taken off lane3: AFC would refuse it and clear lane2.
+            self.assertEqual(gcode.in_command, [])
+            self.assertIn("no filament left", gcode.info[-1])
+            self.assertIn("Slot 2 is left as it was", gcode.info[-1])
+            self.assertEqual(plugin.platform._checks, [])
+
+    def test_afc_empty_spool_with_the_weight_check_off(self):
+        plugin, gcode, objects, _ = self._afc_plugin()
+        objects["AFC"].disable_weight_check = True
+        self._assign(plugin, gcode, 2, {"id": 5, "remaining_weight": 0, "extra": {},
+                                        "filament": {"material": "PLA"}})
+        self.assertEqual(gcode.in_command, ["SET_SPOOL_ID LANE=lane2 SPOOL_ID=5"])
+
+    def test_afc_spool_with_filament_left(self):
+        plugin, gcode, _, _ = self._afc_plugin()
+        self._assign(plugin, gcode, 2, {"id": 5, "remaining_weight": 0.5, "extra": {},
+                                        "filament": {"material": "PLA"}})
+        self.assertEqual(gcode.in_command, ["SET_SPOOL_ID LANE=lane2 SPOOL_ID=5"])
+
+    def test_afc_lane_checked_after_set_spool_id(self):
+        plugin, gcode, objects, _ = self._afc_plugin()
+        self._assign(plugin, gcode, 2, {"id": 5, "extra": {}, "filament": {"material": "PLA"}})
+        self._assign(plugin, gcode, 3, {"id": 6, "extra": {}, "filament": {"material": "PLA"}})
+        platform = plugin.platform
+        self.assertEqual(platform._checks, [(2, 5, "Slot 2"), (3, 6, "Slot 3")])
+        self.assertIn(platform._check_spools, plugin.reactor.timers)
+        objects["AFC"].lanes["lane2"].spool_id = 5       # AFC took spool 5, not 6
+        before = len(gcode.info)
+        self.assertEqual(platform._check_spools(0), plugin.reactor.NEVER)
+        self.assertEqual(gcode.info[before:], [
+            "NFC: AFC did not take Spoolman spool 6 for Slot 3 (lane3); klippy.log has"
+            " AFC's reason"])
+        self.assertEqual(platform._checks, [])
+        platform.disconnect()
+        self.assertIsNone(platform._check_timer)
+
     def test_afc_without_an_ifs_unit(self):
         plugin, gcode, objects = make_plugin()
         plugin.bind_card_uid = False
