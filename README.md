@@ -316,7 +316,7 @@ slot keeps its spool, and the spool becomes Moonraker's active spool
 whenever that slot loads. Without it, the spool is made active only when
 its slot is the one loaded at the time.
 
-On **Kiln OS** with **[KILN_AFC](https://github.com/DIEHARDave/KILN_AFC)**
+On **Kiln OS** with **[KILN_AFC](https://github.com/DIEHARDave/afc-kiln)**
 (the full AFC on the IFS), a Spoolman spool goes to the slot's AFC lane with
 `SET_SPOOL_ID`, as on Zmod: AFC keeps the lane's spool, takes its material,
 color and weight from Spoolman, sets Moonraker's active spool when the lane
