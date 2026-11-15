@@ -507,7 +507,9 @@ class HookTest(unittest.TestCase):
         self.dir = tempfile.mkdtemp()
         self.hook = os.path.join(self.dir, "ff-nfc-hook.sh")
         self.proc = os.path.join(self.dir, "proc")
+        self.old = os.path.join(self.dir, "old-hook.sh")
         os.mkdir(self.proc)
+        self.write(os.path.join(self.proc, "uptime"), "900.0 10.0\n")
 
     def write(self, path, text, mode="w"):
         with open(path, mode) as handle:
@@ -518,19 +520,29 @@ class HookTest(unittest.TestCase):
         self.write(os.path.join(self.proc, pid, "cmdline"), b"\0".join(args) + b"\0", "wb")
 
     def test_missing(self):
-        problems = kiln.hook_problems("/plugin", self.hook, self.proc)
+        problems = kiln.hook_problems("/plugin", self.hook, self.proc, self.old)
         self.assertEqual(len(problems), 1)
-        self.assertIn("install.sh as root", problems[0])
+        self.assertIn("ROOT=1", problems[0])
+
+    def test_old_hook_left(self):
+        self.write(self.old, "FF_NFC_HOOK_VERSION=1\n")
+        problems = kiln.hook_problems("/plugin", self.hook, self.proc, self.old)
+        self.assertIn("old USB hook", problems[0])
 
     def test_outdated(self):
         self.write(self.hook, "FF_NFC_HOOK_VERSION=0\n")
-        self.assertIn("outdated", kiln.hook_problems("/plugin", self.hook, self.proc)[0])
+        self.assertIn("outdated", kiln.hook_problems("/plugin", self.hook, self.proc, self.old)[0])
 
     def test_watcher(self):
         self.write(self.hook, "x\nFF_NFC_HOOK_VERSION=%d\n" % kiln.HOOK_VERSION)
-        self.assertIn("not running", kiln.hook_problems("/plugin", self.hook, self.proc)[0])
-        self.watcher("12", [b"/bin/sh", b"/data/ad5x/ff-nfc-hook.sh", b"watch"])
-        self.assertEqual(kiln.hook_problems("/plugin", self.hook, self.proc), [])
+        self.assertIn("not running", kiln.hook_problems("/plugin", self.hook, self.proc, self.old)[0])
+        self.watcher("12", [b"/bin/sh", b"/data/ad5x/plugins-root/ff_nfc/ff-nfc-hook.sh", b"watch"])
+        self.assertEqual(kiln.hook_problems("/plugin", self.hook, self.proc, self.old), [])
+
+    def test_watcher_boot_grace(self):
+        self.write(self.hook, "x\nFF_NFC_HOOK_VERSION=%d\n" % kiln.HOOK_VERSION)
+        self.write(os.path.join(self.proc, "uptime"), "60.0 10.0\n")
+        self.assertEqual(kiln.hook_problems("/plugin", self.hook, self.proc, self.old), [])
 
     def test_shipped_hook_version_matches(self):
         root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))

@@ -3,3 +3,4 @@
 *.py text eol=lf
 *.cfg text eol=lf
 *.bin binary
+root/* text eol=lf

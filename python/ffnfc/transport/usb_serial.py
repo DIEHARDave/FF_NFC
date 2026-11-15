@@ -178,7 +178,7 @@ class UsbSerialPort(object):
             handle.open()
         except usbfs.UsbError as exc:
             if "ermission" in str(exc):
-                raise SerialError("%s: no access to %s (run install.sh as root)"
+                raise SerialError("%s: no access to %s (Kiln OS: ENABLE_PLUGIN NAME=ff_nfc ROOT=1)"
                                   % (self.path, device.node))
             raise SerialError("%s: %s" % (self.path, exc))
         self.handle = handle

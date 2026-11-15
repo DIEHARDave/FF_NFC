@@ -3,10 +3,8 @@
 #
 # Zmod: DISABLE_PLUGIN name=ff_nfc runs this; it removes the extras links.
 #
-# Kiln OS: removes the root part (install.sh):
-#   sh /data/ad5x/plugins/ff_nfc/uninstall.sh
-# Reader nodes go back to root-only at their next replug or reboot.
-# Then DISABLE_PLUGIN NAME=ff_nfc and delete /data/ad5x/plugins/ff_nfc.
+# Kiln OS (plugin API 1.6) doesn't run this file: DISABLE_PLUGIN NAME=ff_nfc
+# runs root/uninstall.sh.
 
 [ -f /usr/data/zmod/zmod/.shell/0.sh ] && . /usr/data/zmod/zmod/.shell/0.sh
 
@@ -33,20 +31,7 @@ zmod_uninstall() {
 }
 
 kiln_uninstall() {
-    HOOK=/data/ad5x/ff-nfc-hook.sh
-    CONF=/data/ad5x/screen.conf
-    WATCH_PID=/run/ff-nfc-usb.pid
-
-    [ "$(id -u)" = 0 ] || { echo "uninstall.sh: run as root"; exit 1; }
-    start-stop-daemon -K -q -p $WATCH_PID 2>/dev/null || true
-    rm -f $WATCH_PID
-    if [ -f $CONF ]; then
-        sed -i -e '/^# FF_NFC plugin/d' -e "\\|^\\. $HOOK\$|d" $CONF
-        # nothing left but comments and blank lines: it was ours
-        grep -qv '^[[:space:]]*\(#.*\)\{0,1\}$' $CONF || rm -f $CONF
-    fi
-    rm -f $HOOK
-    echo "FF_NFC root part removed"
+    echo "uninstall.sh: on Kiln OS, DISABLE_PLUGIN NAME=ff_nfc removes the root part" >&2
 }
 
 if [ -d /usr/data/zmod ]; then

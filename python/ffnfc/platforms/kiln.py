@@ -15,8 +15,9 @@ sets the active spool and writes lane_data, and its AFC_IFS unit passes
 the spool's material and color on to Kiln. A tag without a spool still
 uses IFS_SET_MATERIAL, which AFC_IFS copies into the lane.
 
-USB readers and the speaker need a root hook (root/ff-nfc-hook.sh), which
-install.sh puts in place; NFC_STATUS says when it is missing or old."""
+USB readers and the speaker need the root part (root/, Kiln OS plugin API
+1.6, enabled with ENABLE_PLUGIN NAME=ff_nfc ROOT=1); NFC_STATUS says when
+it is missing or old."""
 
 import os
 import re
@@ -28,10 +29,16 @@ from ..tag import normalize_color
 UNSET_MATERIALS = ("NONE", "N/A", "?", "")
 # What IFS_SET_MATERIAL accepts as TYPE= (Kiln's parse_material).
 KILN_MATERIAL_RE = re.compile(r"^[A-Za-z0-9+_.-]{1,16}$")
-# The root hook install.sh puts in place (root/ff-nfc-hook.sh); keep in
+# Root's copy of root/ff-nfc-hook.sh (Kiln OS plugin API 1.6); keep in
 # step with its FF_NFC_HOOK_VERSION.
-HOOK_PATH = "/data/ad5x/ff-nfc-hook.sh"
-HOOK_VERSION = 1
+HOOK_PATH = "/data/ad5x/plugins-root/ff_nfc/ff-nfc-hook.sh"
+HOOK_VERSION = 2
+# The hook FF_NFC 0.2 installed by hand (root's install.sh removes it).
+OLD_HOOK_PATH = "/data/ad5x/ff-nfc-hook.sh"
+ENABLE = "ENABLE_PLUGIN NAME=ff_nfc ROOT=1"
+# Kiln runs plugin boot scripts after S99ad5x-booted plus 15 s, a minute
+# or two after Klipper is ready: no watcher before that is no problem yet.
+BOOT_GRACE = 300.0
 # Kiln's S64ad5x-camera starts one ustreamer per camera from port 8090.
 QR_URL = "http://127.0.0.1:8090/?action=snapshot"
 # Kiln's 1280x720 camera frames are then decoded at half size (draft
@@ -53,18 +60,28 @@ def kiln_material(material):
     return text if text not in UNSET_MATERIALS and KILN_MATERIAL_RE.match(text) else None
 
 
-def hook_problems(plugin_dir, hook=HOOK_PATH, proc="/proc"):
-    """What is wrong with the USB root hook, as messages; [] when it is
+def uptime(proc="/proc"):
+    try:
+        with open(os.path.join(proc, "uptime")) as handle:
+            return float(handle.read().split()[0])
+    except (IOError, OSError, ValueError, IndexError):
+        return BOOT_GRACE + 1
+
+
+def hook_problems(plugin_dir, hook=HOOK_PATH, proc="/proc", old_hook=OLD_HOOK_PATH):
+    """What is wrong with the USB root part, as messages; [] when it is
     installed, current and its watcher runs."""
-    fix = "run sh %s as root" % os.path.join(plugin_dir, "install.sh")
+    if os.path.exists(old_hook):
+        return ["the old USB hook %s is still there: run %s" % (old_hook, ENABLE)]
     try:
         with open(hook) as handle:
             text = handle.read()
     except (IOError, OSError):
-        return ["USB readers need the root hook: %s" % fix]
+        return ["USB readers need the root part: run DISABLE_PLUGIN NAME=ff_nfc,"
+                " then %s" % ENABLE]
     match = re.search(r"^FF_NFC_HOOK_VERSION=(\d+)", text, re.M)
     if match is None or int(match.group(1)) < HOOK_VERSION:
-        return ["the USB hook is outdated: %s" % fix]
+        return ["the USB root part is outdated: run %s" % ENABLE]
     # Pid files are root-only under Kiln's umask 077; command lines are not.
     try:
         pids = [p for p in os.listdir(proc) if p.isdigit()]
@@ -78,7 +95,9 @@ def hook_problems(plugin_dir, hook=HOOK_PATH, proc="/proc"):
             continue
         if b"watch" in args and any(a.endswith(b"ff-nfc-hook.sh") for a in args):
             return []
-    return ["the USB watcher is not running: %s, or reboot" % fix]
+    if uptime(proc) <= BOOT_GRACE:
+        return []
+    return ["the USB watcher is not running: reboot, or run %s" % ENABLE]
 
 
 class KilnPlatform(object):

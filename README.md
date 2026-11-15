@@ -73,7 +73,7 @@ ports that a Klipper MCU uses, or ports from unknown USB vendors.
 USB serial drivers** (no `ch341`, `cp210x` or `cdc_acm`): a PN532 board or
 an ESP32 never gets a `/dev/ttyUSB*` or `/dev/ttyACM*`. FF_NFC drives the
 CH340, CP210x and CDC-ACM (ESP32-C3/S3/C6 native USB) chips itself over
-usbfs, so they work anyway, once the [root hook](#kiln-os) gives Klipper
+usbfs, so they work anyway, once the [root part](#kiln-os) gives Klipper
 access to them. PL2303 and FTDI adapters only work on a kernel that has
 their drivers.
 
@@ -133,45 +133,51 @@ To remove it, run `DISABLE_PLUGIN name=ff_nfc`.
 
 ### Kiln OS
 
-Over SSH as root (Kiln's default password is `root`):
+Needs Kiln OS 1.0 (plugin API 1.6) on the `kiln-v1` branch; on Kiln
+v0.0.x, use the `main` branch (the `screen.conf` hook of v0.2).
+FF_NFC isn't in Kiln's plugin catalog yet, so clone it over SSH (Kiln's
+default password is `root`):
 
 ```sh
 cd /data/ad5x/plugins
-su klipper -s /bin/sh -c 'git clone https://github.com/DIEHARDave/FF_NFC.git ff_nfc'
-sh /data/ad5x/plugins/ff_nfc/install.sh
+su klipper -s /bin/sh -c 'git clone -b kiln-v1 https://github.com/DIEHARDave/FF_NFC.git ff_nfc'
 ```
 
 Then in the console (Fluidd, Mainsail or HelixScreen):
 
 ```
-ENABLE_PLUGIN NAME=ff_nfc
+ENABLE_PLUGIN NAME=ff_nfc ROOT=1
 ```
 
-This restarts Klipper. Plug the reader in and run `NFC_STATUS`: it names
-the reader once it is found, and says what is missing if it isn't.
-Fluidd > Settings > Software Updates then lists `ff_nfc` (release tags
-only). After an update, `RESTART` Klipper; if `NFC_STATUS` then says the
-USB hook is outdated, run `install.sh` again as root.
+`ROOT=1` is your consent to run `root/install.sh` as root; read `root/`
+first if you like. Kiln runs it, enables the plugin and restarts Klipper.
+Plug the reader in and run `NFC_STATUS`: it names the reader once it is
+found, and says what is missing if it isn't. Fluidd > Settings > Software
+Updates then lists `ff_nfc`. After an update, `RESTART` Klipper: when
+`root/` changed, Kiln runs `root/update.sh` by itself.
 
-**The root hook** (`install.sh`) is needed for USB readers and for the scan
+**The root part** (`root/`) is needed for USB readers and for the scan
 beep on the stock kernel (see [Beeps](#beeps)); network readers work
 without it. Kiln's `/dev/bus/usb` nodes belong to root, and a plugin runs
-as user `klipper`. `install.sh` copies `root/ff-nfc-hook.sh` to
-`/data/ad5x/ff-nfc-hook.sh` and adds a line to `/data/ad5x/screen.conf`,
-which Kiln's screen service sources as root at every boot. The hook runs a
-small watcher that, whenever USB devices come or go, gives group `klipper`
-access to devices that can be readers: CCID-class devices and USB serial
-chips from the vendors above. It also gives group `klipper` the speaker's
-PWM device (`/dev/jz_pwm`). Nothing else is changed.
+as user `klipper`. Kiln copies `root/` to
+`/data/ad5x/plugins-root/ff_nfc` (root-owned, so root never runs code from
+the clone) and `install.sh` puts the boot script `S50ff_nfc` in
+`/data/ad5x/plugins-root/init.d`. It runs a small watcher that, whenever
+USB devices come or go, gives group `klipper` access to devices that can
+be readers: CCID-class devices and USB serial chips from the vendors
+above. It also gives group `klipper` the speaker's PWM device
+(`/dev/jz_pwm`). Nothing else is changed. Kiln starts boot scripts a
+minute or so after the touch screen, so a USB reader answers from then
+on. The root scripts log to `/data/ad5x/kiln-log/plugins-root.log`.
 
-> **The hook is a stopgap.** Kiln OS has no boot hook for plugins, and
-> `screen.conf` is the one root-sourced file left to use. A later Kiln
-> release may close that too; then run `sh /data/ad5x/ff-nfc-hook.sh` as
-> root after each reboot. A proper hook was requested in
-> [djvalic/kiln-os#13](https://github.com/djvalic/kiln-os/issues/13).
+**From FF_NFC 0.2 (the `screen.conf` hook):** after the update Kiln warns
+that the plugin "got root scripts". Run `DISABLE_PLUGIN NAME=ff_nfc`,
+then `ENABLE_PLUGIN NAME=ff_nfc ROOT=1`: `root/install.sh` removes the old
+`/data/ad5x/ff-nfc-hook.sh`, its `screen.conf` lines and its watcher.
 
-To remove the plugin: `DISABLE_PLUGIN NAME=ff_nfc`, `sh uninstall.sh` as
-root, then delete `/data/ad5x/plugins/ff_nfc`.
+To remove the plugin: `REMOVE_PLUGIN NAME=ff_nfc` (Kiln runs
+`root/uninstall.sh` first), or `DISABLE_PLUGIN NAME=ff_nfc` to keep the
+clone.
 
 ## Moving from zmod_nfc or KILN_NFC
 
@@ -199,10 +205,10 @@ this order:
 **From KILN_NFC (Kiln OS):**
 
 1. `DISABLE_PLUGIN NAME=nfc`
-2. [Install FF_NFC](#kiln-os). Its `install.sh` also removes KILN_NFC's
-   hook (`nfc-hook.sh`) and its `screen.conf` lines.
-3. If `local.cfg` has a `[kiln_nfc]` section, rename it to `[ff_nfc]`.
-4. `ENABLE_PLUGIN NAME=ff_nfc`, then delete `/data/ad5x/plugins/nfc`.
+2. If `local.cfg` has a `[kiln_nfc]` section, rename it to `[ff_nfc]`.
+3. [Install FF_NFC](#kiln-os). Its `root/install.sh` also removes
+   KILN_NFC's hook (`nfc-hook.sh`) and its `screen.conf` lines.
+4. Delete `/data/ad5x/plugins/nfc`.
 
 LaneTag finds FF_NFC by itself from its next release on; until a printer is
 moved over, it keeps talking to zmod_nfc there.
@@ -276,7 +282,7 @@ Kiln's `ad5x-sound`. On the stock Flashforge kernel Kiln finds no speaker
 and its `M300` is silent; FF_NFC then uses `cmd_pwm` too, with the
 printer's vendor libraries. Kiln doesn't ship `cmd_pwm`, so this works on
 printers that ran Zmod before (its copy is still in `/data/config/mod_data`),
-and needs the [root hook](#kiln-os).
+and needs the [root part](#kiln-os).
 
 ### With Spoolman
 
@@ -523,7 +529,7 @@ the Spoolman lookup and the slot prompt.
 
 | Command | |
 |---------|--|
-| `NFC_STATUS` | Reader state, the last tag, enabled formats and keys, and on Kiln OS any problem with the USB hook. |
+| `NFC_STATUS` | Reader state, the last tag, enabled formats and keys, and on Kiln OS any problem with the USB root part. |
 | `NFC_ASSIGN SLOT=<n>` | Assign the scanned spool to a slot (the prompt's buttons run this). |
 | `NFC_CANCEL` | Close the prompt. |
 | `NFC_PROMPT` | Show the prompt for the last tag again. |

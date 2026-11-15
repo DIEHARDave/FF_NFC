@@ -1,0 +1,5 @@
+#!/bin/sh
+# FF_NFC boot script (Kiln OS plugin API 1.6): S69ad5x-plugin-boot runs it
+# with start at boot and stop at shutdown. install.sh copies it to
+# /data/ad5x/plugins-root/init.d.
+exec /bin/sh /data/ad5x/plugins-root/ff_nfc/ff-nfc-hook.sh "$1"

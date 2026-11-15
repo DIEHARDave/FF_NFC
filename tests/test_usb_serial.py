@@ -175,7 +175,7 @@ class PortTest(unittest.TestCase):
                 usb_serial.UsbSerialPort("usb:1-1.2").open()
         finally:
             usb_serial.find_device, usbfs.UsbHandle = originals
-        self.assertIn("install.sh", str(caught.exception))
+        self.assertIn("ROOT=1", str(caught.exception))
 
     def test_make_port(self):
         self.assertIsInstance(usb_serial.make_port("usb:1-1"), usb_serial.UsbSerialPort)

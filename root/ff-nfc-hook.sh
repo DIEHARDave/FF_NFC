@@ -7,24 +7,27 @@
 # kernel also has no USB serial drivers, so the plugin drives the
 # readers through those nodes itself (usbfs).
 #
-# install.sh copies this to /data/ad5x/ff-nfc-hook.sh (root) and adds
-#   . /data/ad5x/ff-nfc-hook.sh
-# to /data/ad5x/screen.conf, which Kiln's /etc/init.d/S65ad5x-screen
-# (root) sources at every boot (a stopgap: Kiln has no plugin boot hook).
-# When sourced, this hook starts the watcher once (pid in /run, so once
-# per boot). The watcher ("ff-nfc-hook.sh watch") gives group klipper
-# read/write on the nodes of USB devices that can be NFC readers - CCID
-# class (ACR122U, ACR1552U), and the serial chips PN532 boards and reader
-# bridges use - whenever USB devices come or go. It also gives group klipper /dev/jz_pwm (the
-# stock kernel's PWM driver, behind the speaker), for the scan beep.
-# Nothing else is touched.
+# Kiln OS plugin API 1.6 runs it as root from root's copy of the
+# plugin's root/ folder (/data/ad5x/plugins-root/ff_nfc), never from the
+# clone user klipper owns:
+#   ff-nfc-hook.sh start   boot script S50ff_nfc (and install.sh): starts
+#                          the watcher
+#   ff-nfc-hook.sh stop    stops it
+#   ff-nfc-hook.sh watch   the watcher
+# The watcher gives group klipper read/write on the nodes of USB devices
+# that can be NFC readers - CCID class (ACR122U, ACR1552U), and the
+# serial chips PN532 boards and reader bridges use - whenever USB devices
+# come or go. It also gives group klipper /dev/jz_pwm (the stock
+# kernel's PWM driver, behind the speaker), for the scan beep. Nothing
+# else is touched. (A udev rule would not do: on the stock kernel Kiln
+# runs mdev, and /dev/jz_pwm only exists there.)
 #####################################################################
 
-# Bump when this file changes: the plugin's NFC_STATUS compares it with
-# the installed copy and asks for install.sh again
-FF_NFC_HOOK_VERSION=1
+# Bump when this file changes: NFC_STATUS compares it with root's copy
+# (Kiln runs update.sh after a git update, so they should match)
+FF_NFC_HOOK_VERSION=2
 
-NFC_HOOK=/data/ad5x/ff-nfc-hook.sh
+NFC_HOOK=/data/ad5x/plugins-root/ff_nfc/ff-nfc-hook.sh
 NFC_WATCH_PID=/run/ff-nfc-usb.pid
 
 # Vendors of the USB serial chips and boards the plugin probes (keep in
@@ -68,11 +71,25 @@ nfc_watch() {
 	done
 }
 
-if [ "$1" = watch ]; then
-	nfc_watch
-	exit 0
-fi
+nfc_running() {
+	[ -f $NFC_WATCH_PID ] && kill -0 "$(cat $NFC_WATCH_PID)" 2>/dev/null
+}
 
-if ! { [ -f $NFC_WATCH_PID ] && kill -0 "$(cat $NFC_WATCH_PID)" 2>/dev/null; }; then
-	start-stop-daemon -S -b -m -p $NFC_WATCH_PID -x /bin/sh -- $NFC_HOOK watch
-fi
+case "$1" in
+watch)
+	nfc_watch
+	;;
+start)
+	nfc_running ||
+		start-stop-daemon -S -b -m -p $NFC_WATCH_PID -x /bin/sh -- $NFC_HOOK watch
+	;;
+stop)
+	start-stop-daemon -K -q -p $NFC_WATCH_PID 2>/dev/null
+	rm -f $NFC_WATCH_PID
+	;;
+*)
+	echo "usage: $0 start|stop|watch"
+	exit 1
+	;;
+esac
+exit 0
