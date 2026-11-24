@@ -63,7 +63,7 @@ def entry_key(entries, slot):
 # for its own and ignores it when it re-reads lane_data, so this module
 # writes only the shared spellings (vendor_name, name).
 SPOOL_KEYS = ("name", "spool_name", "vendor", "color_name", "spoolman_vendor_id",
-              "scan_time", "remaining_weight_g", "total_weight_g")
+              "scan_time", "remaining_weight_g", "total_weight_g", "filament_id")
 
 
 def same_spool(existing, info):
@@ -77,8 +77,9 @@ def same_spool(existing, info):
 def lane_value(existing, slot, info):
     """The new entry: existing keys kept, the spool's details set. info has
     material, color (RRGGBB), and optionally spool_id, vendor, name,
-    nozzle_temp, bed_temp, uid. For a different spool than before, other
-    writers' details about the old one are dropped."""
+    nozzle_temp, bed_temp, uid, filament_id. For a different spool than
+    before, other writers' details about the old one are dropped; the same
+    spool keeps another writer's filament_id when info has none."""
     value = dict(existing) if isinstance(existing, dict) else {}
     if not same_spool(value, info):
         for key in list(value):
@@ -106,6 +107,9 @@ def lane_value(existing, slot, info):
         value["vendor_name"] = info["vendor"]
     else:
         value.pop("vendor_name", None)
+    if info.get("filament_id"):
+        # OrcaSlicer's preset match key, from the Spoolman filament.
+        value["filament_id"] = info["filament_id"]
     for key in LEGACY_KEYS:
         value.pop(key, None)
     value["ff_nfc_name"] = info.get("name") or ""
@@ -123,14 +127,15 @@ def lane_value(existing, slot, info):
 
 # Kiln: what describes the spool rather than the slot; another spool's goes.
 KILN_SPOOL_KEYS = ("name", "spool_name", "vendor", "vendor_name", "color_name",
-                   "spoolman_vendor_id", "spool_id", "remaining_weight_g", "total_weight_g")
+                   "spoolman_vendor_id", "spool_id", "remaining_weight_g", "total_weight_g",
+                   "filament_id")
 
 
 def kiln_lane_value(existing, slot, info):
     """The new Kiln entry: other keys of the existing one kept, HelixScreen's
     and the previous spool's dropped, the scanned spool's set. info has
     material, color (RRGGBB), scan_time and optionally spool_id, vendor,
-    name, nozzle_temp, bed_temp, uid."""
+    name, nozzle_temp, bed_temp, uid, filament_id."""
     value = dict(existing) if isinstance(existing, dict) else {}
     for key in list(value):
         if key.startswith("helix_") or key in KILN_SPOOL_KEYS or key in LEGACY_KEYS:
@@ -149,6 +154,8 @@ def kiln_lane_value(existing, slot, info):
         value["name"] = info["name"]
     if info.get("vendor"):
         value["vendor_name"] = info["vendor"]
+    if info.get("filament_id"):
+        value["filament_id"] = info["filament_id"]
     value["ff_nfc_uid"] = info.get("uid") or ""
     value["scan_time"] = info["scan_time"]
     return value

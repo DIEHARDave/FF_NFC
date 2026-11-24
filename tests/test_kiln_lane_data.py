@@ -40,6 +40,13 @@ class LaneValueTest(unittest.TestCase):
         value = lane_data.kiln_lane_value(KILN, 1, dict(INFO, spool_id=12))
         self.assertEqual(value["spool_id"], 12)
 
+    def test_filament_id(self):
+        value = lane_data.kiln_lane_value(dict(KILN, filament_id="OFold"), 1,
+                                          dict(INFO, filament_id="OGFL99"))
+        self.assertEqual(value["filament_id"], "OGFL99")
+        value = lane_data.kiln_lane_value(dict(KILN, filament_id="OFold"), 1, INFO)
+        self.assertNotIn("filament_id", value)
+
     def test_kiln_nfc_uid_goes(self):
         value = lane_data.kiln_lane_value(dict(KILN, kiln_nfc_uid="04AA"), 1, INFO)
         self.assertNotIn("kiln_nfc_uid", value)

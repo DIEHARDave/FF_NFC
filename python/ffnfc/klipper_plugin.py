@@ -34,7 +34,8 @@ from .decoders.crypto import key_matches
 from .decoders import vendors
 from .readers.base import ReaderError
 from .readers.detect import READER_TYPES, open_reader
-from .spoolman import Spoolman, SpoolmanError, normalize_uid, spool_color, spool_title, tag_format
+from .spoolman import (Spoolman, SpoolmanError, normalize_uid, orca_filament_id, spool_color,
+                       spool_title, tag_format)
 from .camera import DECODERS as QR_DECODERS
 from .decoders.ndef import text_message, type2_image
 from .platforms import make_platform
@@ -42,6 +43,7 @@ from .remote import API_VERSION, RemoteError, tag_from_json
 from .tag import KIND_QR, KIND_TYPE2, TECH_CAMERA, TECH_ISO14443A, Tag
 
 LOGGER = logging.getLogger("ff_nfc")
+LANE_DATA_MODES = ("auto", "always", "off")
 # The directory holding the ffnfc package, for the camera child process.
 PACKAGE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # The plugin's clone (python/ffnfc/ is two levels down).
@@ -179,8 +181,10 @@ class FfNfc(object):
         self.scan_error_gcode = config.get("scan_error_gcode", "").strip()
         moonraker_url = config.get("moonraker_url", "http://127.0.0.1:7125")
         self.spoolman = Spoolman(moonraker_url)
+        self.lane_data_mode = self._lane_data_mode(config)
         self.lane_data = (self.platform.lane_data_class(moonraker_url)
-                          if config.getboolean("lane_data", True) else None)
+                          if self.lane_data_mode != "off" else None)
+        self._yielded_to = None      # the producer last left lane_data to
         self.remote_result = None     # outcome of the last network scan
         self.settings = self._vendor_settings(config)
         self.excluded_ports = []
@@ -609,15 +613,46 @@ class FfNfc(object):
             info["vendor"] = (filament.get("vendor") or {}).get("name")
             info["nozzle_temp"] = filament.get("settings_extruder_temp")
             info["bed_temp"] = filament.get("settings_bed_temp")
+            info["filament_id"] = orca_filament_id(scan.spool)
         if scan.filament is not None:
             info["vendor"] = info.get("vendor") or scan.filament.brand
             info["nozzle_temp"] = info.get("nozzle_temp") or scan.filament.nozzle_temp
             info["bed_temp"] = info.get("bed_temp") or scan.filament.bed_temp
         return info
 
+    @staticmethod
+    def _lane_data_mode(config):
+        """auto: write lane_data only where no producer does (lane-status-spec:
+        a tag reader hands its data to the producer); always: write it anyway;
+        off: never. True and False are auto and off."""
+        value = str(config.get("lane_data", "auto")).strip().lower()
+        value = {"true": "auto", "yes": "auto", "on": "auto", "1": "auto",
+                 "false": "off", "no": "off", "0": "off"}.get(value, value)
+        if value not in LANE_DATA_MODES:
+            raise config.error("[ff_nfc] lane_data must be one of %s, not %r"
+                               % (", ".join(LANE_DATA_MODES), value))
+        return value
+
+    def lane_data_producer(self):
+        """What writes this printer's lane_data from its own slots (AFC, Zmod,
+        zmod_afcplus, Kiln's kiln_lanes), or None where nothing does."""
+        producer = getattr(self.platform, "lane_data_producer", None)
+        return producer() if producer is not None else None
+
     def _write_lane_data(self, slot_number, info):
-        if self.lane_data is not None:
-            self.lane_data.write_later(slot_number, info)
+        if self.lane_data is None:
+            return
+        if self.lane_data_mode == "auto":
+            producer = self.lane_data_producer()
+            if producer is not None:
+                # The spool went to the producer (SET_SPOOL_ID, the slot's
+                # color and material), which writes the record.
+                if producer != self._yielded_to:
+                    self._yielded_to = producer
+                    LOGGER.info("ff_nfc: %s writes lane_data; FF_NFC leaves it alone"
+                                " (lane_data: always writes it anyway)", producer)
+                return
+        self.lane_data.write_later(slot_number, info)
 
     def _set_active_spool(self, spool_id):
         try:
@@ -701,6 +736,14 @@ class FfNfc(object):
         lines.append("Beep: %s" % self.beeper.describe())
         for problem in self.platform.status_lines():
             lines.append("  %s" % problem)
+        if self.lane_data_mode == "off":
+            lines.append("lane_data: off")
+        elif self.lane_data_mode == "always":
+            lines.append("lane_data: always written by FF_NFC")
+        else:
+            producer = self.lane_data_producer()
+            lines.append("lane_data: %s" % ("written by %s; FF_NFC hands the spool to it" % producer
+                                             if producer else "written by FF_NFC (no producer here)"))
         if self.last is not None:
             age = time.time() - self.last.time
             lines.append("Last scan (%s), %ds ago: %s" % (self.last.source(), age, self.last.title()))

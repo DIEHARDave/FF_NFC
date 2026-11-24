@@ -301,8 +301,20 @@ class PluginTest(unittest.TestCase):
         gcode.commands["NFC_ASSIGN"](FakeGcmd(gcode, SLOT=3))
         self.assertEqual(objects["webhooks"].calls, [])
 
-    def test_lane_data_written_after_the_slot(self):
+    def test_lane_data_left_to_kiln_lanes(self):
+        # lane_data: auto (True): kiln_lanes mirrors the slot FF_NFC just set.
         plugin, gcode, _ = make_plugin({"lane_data": True})
+        written = []
+        plugin.lane_data.write_later = lambda slot, info: written.append((slot, info))
+        self.assertEqual(plugin.lane_data_producer(), "kiln_lanes")
+        scan = plugin._process(type2_tag(text_record("PLA:112233")))
+        plugin._handle_scan(scan)
+        gcode.commands["NFC_ASSIGN"](FakeGcmd(gcode, SLOT=3))
+        self.assertTrue(any("IFS_SET_MATERIAL SLOT=3" in c for c in gcode.scripts + gcode.in_command))
+        self.assertEqual(written, [])
+
+    def test_lane_data_written_after_the_slot(self):
+        plugin, gcode, _ = make_plugin({"lane_data": "always"})
         written = []
         plugin.lane_data.write_later = lambda slot, info: written.append((slot, info))
         scan = plugin._process(type2_tag(text_record("PLA:112233")))

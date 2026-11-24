@@ -214,6 +214,28 @@ class ZmodPlatform(object):
         else:
             respond("NFC: %s is now %s #%s" % (label, material or "?", zmod_color))
 
+    def lane_data_producer(self):
+        """Who writes lane_data here: AFC (full AFC); zmod_afcplus while
+        HelixScreen runs (helix = 1); else Zmod's own slot mirror
+        (zmod_color, [zmod_color] orca_lanes). With HelixScreen and no
+        zmod_afcplus nothing does, and FF_NFC fills the gap."""
+        # Zmod's AFC panel (zmod_afc) registers an AFC object of its own; it
+        # is the real AFC only with full AFC ([AFC] in the config).
+        zmod_afc = self.printer.lookup_object("zmod_afc", None)
+        if (self.printer.lookup_object("AFC", None) is not None
+                and (zmod_afc is None or getattr(zmod_afc, "full", False) is True)):
+            return "AFC"
+        save_variables = self.printer.lookup_object("save_variables", None)
+        variables = getattr(save_variables, "allVariables", None) or {}
+        if variables.get("helix", 0) == 1:
+            afcplus = self.printer.lookup_object("zmod_afcplus", None)
+            if getattr(afcplus, "lane_data", None) is not None:
+                return "zmod_afcplus"
+            return None
+        if getattr(self.zmod_color, "orca_lanes", False):
+            return "Zmod"
+        return None
+
     def write_lane_data(self, scan, slot_number, material, color, palette=None):
         info = self.core._lane_info(scan, material, color)
         if color and palette:

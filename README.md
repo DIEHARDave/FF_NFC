@@ -349,18 +349,41 @@ Without Spoolman, only the tag's material and color are used.
 
 ### Lane data for OrcaSlicer and HelixScreen
 
-After an assignment, FF_NFC adds the spool's details to the slot's entry
-in Moonraker's `lane_data` (which OrcaSlicer and HelixScreen read):
+Moonraker's `lane_data` (which OrcaSlicer and HelixScreen read) has one
+writer per printer, as the
+[lane-status-spec](https://github.com/prestonbrown/lane-status-spec) sets
+out: the module that owns the slots. FF_NFC is a tag reader, so by default
+(`lane_data: auto`) it hands the spool to that writer and leaves the entry
+alone:
+
+| Printer | Writes `lane_data` | FF_NFC hands the spool over with |
+|---|---|---|
+| AFC (zmod_afc_full, afc-kiln) | AFC | `SET_SPOOL_ID` |
+| Zmod, no HelixScreen | Zmod's slot mirror | `SET_SPOOL_ID` (AFC panel) or `CHANGE_ZCOLOR` |
+| Zmod + HelixScreen + zmod_afcplus | zmod_afcplus | `SET_SPOOL_ID` (AFC panel) |
+| Kiln OS without AFC | Kiln's `kiln_lanes` | `IFS_SET_MATERIAL`, `SPOOLMAN_SET_SLOT` |
+| Zmod + HelixScreen without zmod_afcplus, FLSUN T1 | nobody: FF_NFC | |
+
+`NFC_STATUS` names the writer. Zmod stores only palette colors, so for a
+tag whose spool is not in Spoolman OrcaSlicer sees the nearest palette
+color there. `lane_data: always` writes the entry after every assignment
+anyway, as FF_NFC 0.3 and older did; `lane_data: off` never does.
+
+Where FF_NFC writes the entry, it adds the spool's details to it:
 material, color, Spoolman `spool_id`, name, vendor and nozzle and bed
-temperatures. The entry is found by its `lane` field, so this works with
-the AD5X's `lane1`..`lane4` and the Creator 5's `T0`..`T3` keys alike. Set
-`lane_data: False` to turn it off.
+temperatures. A Spoolman spool whose filament has an `orca_filament_id`
+extra field (OrcaSlicer's `OF...` id, as spoolman-lane-sync uses it) also
+gives `filament_id`, so OrcaSlicer picks that exact filament preset instead
+of a generic one. Numbers and Bambu `GF` codes there are skipped. The entry
+is found by its `lane` field, so this works with
+the AD5X's `lane1`..`lane4` and the Creator 5's `T0`..`T3` keys alike.
 
 * **Zmod:** other keys in the entry, such as zmod_afcplus's, are kept.
 * **Kiln OS:** Kiln's own record for the slot uses a key that HelixScreen
   mistakes for one of its own, so HelixScreen would ignore the change and
-  keep showing a color once picked on its screen. FF_NFC rewrites the
-  record right after Kiln does, so HelixScreen shows the scanned spool.
+  keep showing a color once picked on its screen. With `lane_data: always`,
+  FF_NFC rewrites the record right after Kiln does, so HelixScreen shows
+  the scanned spool.
   With KILN_AFC, AFC writes the record and FF_NFC leaves it alone.
 
 ## Network readers

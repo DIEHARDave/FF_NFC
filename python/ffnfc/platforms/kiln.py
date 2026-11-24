@@ -290,6 +290,13 @@ class KilnPlatform(object):
             respond("NFC: turn on Kiln's spoolman plugin (INSTALL_PLUGIN NAME=spoolman"
                     " ENABLE=1) to keep each slot's spool")
 
+    def lane_data_producer(self):
+        """AFC (afc-kiln) writes lane_data for its lanes; otherwise Kiln's
+        kiln_lanes Moonraker component mirrors the IFS slots."""
+        if self.printer.lookup_object("AFC", None) is not None:
+            return "AFC"
+        return "kiln_lanes"
+
     def status_lines(self):
         from ..klipper_plugin import PLUGIN_DIR
         return hook_problems(PLUGIN_DIR)

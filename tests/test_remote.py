@@ -10,6 +10,7 @@ from helpers import mime_record, text_record, type2_tag
 from test_plugin import CommandError, FakeGcmd, make_plugin
 
 from ffnfc import lane_data
+from ffnfc.spoolman import orca_filament_id
 from ffnfc.remote import RemoteError, tag_from_json
 
 
@@ -163,6 +164,21 @@ class EndpointTest(unittest.TestCase):
         self.assertIsNone(self.plugin.pending)
 
 
+class OrcaFilamentIdTest(unittest.TestCase):
+    def spool(self, value):
+        return {"id": 1, "filament": {"extra": {"orca_filament_id": value}}}
+
+    def test_json_encoded_string(self):
+        self.assertEqual(orca_filament_id(self.spool('"OGFL99"')), "OGFL99")
+        self.assertEqual(orca_filament_id(self.spool("OFabc123")), "OFabc123")
+
+    def test_unusable_values(self):
+        for value in ('""', '"12"', "12", '"GFA00"', '"gfl99"', None):
+            self.assertIsNone(orca_filament_id(self.spool(value)), value)
+        self.assertIsNone(orca_filament_id({"id": 1, "filament": {}}))
+        self.assertIsNone(orca_filament_id(None))
+
+
 class LaneDataTest(unittest.TestCase):
     def test_entry_key_follows_lane_field(self):
         entries = {"T0": {"lane": "0"}, "T1": {"lane": "1"}}
@@ -224,6 +240,21 @@ class LaneDataTest(unittest.TestCase):
             "material": "PLA", "color": "6600CC", "spool_id": 19, "uid": "9065F63E", "name": "x"})
         self.assertEqual(value["spool_name"], "Violet")
         self.assertEqual(value["helix_material"], "PLA")
+
+    def test_filament_id_set_and_dropped_with_the_spool(self):
+        value = lane_data.lane_value({"lane": "0"}, 1, {
+            "material": "PLA", "spool_id": 19, "uid": "53", "filament_id": "OGFL99"})
+        self.assertEqual(value["filament_id"], "OGFL99")
+        value = lane_data.lane_value(value, 1, {"material": "PETG", "spool_id": 20, "uid": "54"})
+        self.assertNotIn("filament_id", value)
+
+    def test_same_spool_keeps_other_writers_filament_id(self):
+        existing = {"lane": "0", "spool_id": 19, "filament_id": "OFabc123"}
+        value = lane_data.lane_value(existing, 1, {"material": "PLA", "spool_id": 19, "uid": "53"})
+        self.assertEqual(value["filament_id"], "OFabc123")
+        value = lane_data.lane_value(existing, 1, {
+            "material": "PLA", "spool_id": 19, "uid": "53", "filament_id": "OGFL99"})
+        self.assertEqual(value["filament_id"], "OGFL99")    # the tracker wins
 
     def test_zmod_nfc_entry_is_taken_over(self):
         # Written by zmod_nfc before the rename: the same tag is the same

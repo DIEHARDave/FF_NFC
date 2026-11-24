@@ -666,5 +666,86 @@ class QrScanTest(unittest.TestCase):
             gcode.commands["NFC_QR_SCAN"](FakeGcmd(gcode))
 
 
+class FakeLaneData(object):
+    def __init__(self):
+        self.writes = []
+
+    def write_later(self, slot, info):
+        self.writes.append((slot, info))
+
+
+class FakeSaveVariables(object):
+    def __init__(self, variables):
+        self.allVariables = variables
+
+
+class LaneDataProducerTest(unittest.TestCase):
+    """lane_data: auto leaves the record to the producer (lane-status-spec)."""
+
+    def plugin(self, mode="auto", helix=0, orca_lanes=True, afc=False, afcplus=None):
+        plugin, _, objects = make_plugin()
+        plugin.lane_data_mode = mode
+        plugin.lane_data = FakeLaneData()
+        objects["save_variables"] = FakeSaveVariables({"helix": helix})
+        objects["zmod_color"].orca_lanes = orca_lanes
+        if afc:
+            objects["AFC"] = object()
+        if afcplus is not None:
+            objects["zmod_afcplus"] = type("AfcPlus", (), {"lane_data": afcplus})()
+        return plugin
+
+    def test_producers(self):
+        self.assertEqual(self.plugin().lane_data_producer(), "Zmod")
+        self.assertEqual(self.plugin(afc=True).lane_data_producer(), "AFC")
+        self.assertEqual(self.plugin(helix=1, afcplus=object()).lane_data_producer(),
+                         "zmod_afcplus")
+        # HelixScreen without zmod_afcplus, or with its lane_data off: no producer.
+        self.assertIsNone(self.plugin(helix=1).lane_data_producer())
+        self.assertIsNone(self.plugin(helix=1, afcplus=None).lane_data_producer())
+        self.assertIsNone(self.plugin(orca_lanes=False).lane_data_producer())
+
+    def test_zmod_afc_panel_is_not_afc(self):
+        # zmod_afc registers an AFC object for Mainsail and Fluidd.
+        plugin = self.plugin(helix=1, afc=True, afcplus=object())
+        afc = FakeZmodAfc(True)
+        afc.full = False
+        plugin.printer.objects["zmod_afc"] = afc
+        self.assertEqual(plugin.lane_data_producer(), "zmod_afcplus")
+        afc.full = True             # full AFC ([AFC] section)
+        self.assertEqual(plugin.lane_data_producer(), "AFC")
+
+    def test_auto_yields_to_a_producer(self):
+        plugin = self.plugin()
+        plugin._write_lane_data(1, {"material": "PLA"})
+        self.assertEqual(plugin.lane_data.writes, [])
+
+    def test_auto_fills_the_gap(self):
+        plugin = self.plugin(helix=1)
+        plugin._write_lane_data(1, {"material": "PLA"})
+        self.assertEqual(len(plugin.lane_data.writes), 1)
+
+    def test_always_writes(self):
+        plugin = self.plugin(mode="always", afc=True)
+        plugin._write_lane_data(1, {"material": "PLA"})
+        self.assertEqual(len(plugin.lane_data.writes), 1)
+
+    def test_mode_option(self):
+        for value, mode in ((True, "auto"), (False, "off"), ("Always", "always"),
+                            ("off", "off"), (None, "auto")):
+            options = {} if value is None else {"lane_data": value}
+            config = FakeConfig(None, options)
+            self.assertEqual(klipper_plugin.FfNfc._lane_data_mode(config), mode)
+        with self.assertRaises(ConfigError):
+            klipper_plugin.FfNfc._lane_data_mode(FakeConfig(None, {"lane_data": "sometimes"}))
+
+    def test_status_names_the_producer(self):
+        plugin, gcode, objects = make_plugin()
+        plugin.lane_data_mode = "auto"
+        objects["AFC"] = object()
+        gcmd = FakeGcmd(gcode)
+        plugin.cmd_NFC_STATUS(gcmd)
+        self.assertIn("lane_data: written by AFC", " ".join(gcode.info))
+
+
 if __name__ == "__main__":
     unittest.main()

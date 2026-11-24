@@ -14,6 +14,9 @@ import urllib.request
 
 CARD_UIDS_FIELD = "card_uids"
 NFC_ID_FIELD = "nfc_id"
+# OrcaSlicer's filament id ("OF..."), kept on the Spoolman filament (the
+# lane-status-spec key, from spoolman-lane-sync).
+ORCA_FILAMENT_ID_FIELD = "orca_filament_id"
 CARD_UIDS_FIELD_DEFINITION = {
     "name": "Card UIDs",
     "field_type": "text",
@@ -94,6 +97,17 @@ def spool_title(spool):
             if word.lower() not in (w.lower() for w in words):
                 words.append(word)
     return " ".join(words) or "spool %s" % spool.get("id")
+
+
+def orca_filament_id(spool):
+    """The OrcaSlicer filament id on the spool's filament, or None. Only a
+    string id is used: a number is a Spoolman filament id, and a Bambu "GF"
+    code needs Orca's translation table, which the printer does not have."""
+    filament = (spool or {}).get("filament") or {}
+    value = _extra_text(filament, ORCA_FILAMENT_ID_FIELD).strip()
+    if not value or value.isdigit() or value.upper().startswith("GF"):
+        return None
+    return value
 
 
 def spool_color(spool):
