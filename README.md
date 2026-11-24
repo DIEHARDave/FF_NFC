@@ -133,14 +133,14 @@ To remove it, run `DISABLE_PLUGIN name=ff_nfc`.
 
 ### Kiln OS
 
-Needs Kiln OS 1.0 (plugin API 1.6) on the `kiln-v1` branch; on Kiln
-v0.0.x, use the `main` branch (the `screen.conf` hook of v0.2).
+Needs Kiln OS 1.0 or later (plugin API 1.6). On Kiln v0.0.x, use the
+`kiln-v0` branch (FF_NFC 0.2, the `screen.conf` hook).
 FF_NFC isn't in Kiln's plugin catalog yet, so clone it over SSH (Kiln's
 default password is `root`):
 
 ```sh
 cd /data/ad5x/plugins
-su klipper -s /bin/sh -c 'git clone -b kiln-v1 https://github.com/DIEHARDave/FF_NFC.git ff_nfc'
+su klipper -s /bin/sh -c 'git clone https://github.com/DIEHARDave/FF_NFC.git ff_nfc'
 ```
 
 Then in the console (Fluidd, Mainsail or HelixScreen):
@@ -155,6 +155,10 @@ Plug the reader in and run `NFC_STATUS`: it names the reader once it is
 found, and says what is missing if it isn't. Fluidd > Settings > Software
 Updates then lists `ff_nfc`. After an update, `RESTART` Klipper: when
 `root/` changed, Kiln runs `root/update.sh` by itself.
+
+On the `kiln-v1` branch from the Kiln 1.0 test builds? Switch the clone
+to `main`, or Software Updates marks it invalid:
+`su klipper -s /bin/sh -c 'git -C /data/ad5x/plugins/ff_nfc checkout main'`.
 
 **The root part** (`root/`) is needed for USB readers and for the scan
 beep on the stock kernel (see [Beeps](#beeps)); network readers work
