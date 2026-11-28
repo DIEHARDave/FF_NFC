@@ -1,4 +1,16 @@
-# FF_NFC
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/logo/lanetag-nfc-logo-dark.svg">
+  <img alt="LaneTag USB" src="docs/logo/lanetag-nfc-logo.svg" width="520">
+</picture>
+
+# LaneTag USB (lanetag-nfc)
+
+**Formerly FF_NFC.** The repository was renamed; existing installs keep
+updating, because GitHub and Moonraker follow the move. The plugin itself is
+still called `ff_nfc` (`[ff_nfc]` section, `NFC_*` commands, Kiln plugin
+name), so no config changes. Part of the LaneTag family: this plugin runs on
+the printer with a USB reader; [LaneTag](https://github.com/DIEHARDave/LaneTag)
+is the ESP32 Wi-Fi reader, which also works with it but isn't needed.
 
 > **Parts:** the printers, boards, readers and other gear that go with this project are listed at [projects.die-hard.net/gear](https://projects.die-hard.net/gear) (Amazon affiliate links).
 
@@ -135,12 +147,13 @@ To remove it, run `DISABLE_PLUGIN name=ff_nfc`.
 
 Needs Kiln OS 1.0 or later (plugin API 1.6). On Kiln v0.0.x, use the
 `kiln-v0` branch (FF_NFC 0.2, the `screen.conf` hook).
-FF_NFC isn't in Kiln's plugin catalog yet, so clone it over SSH (Kiln's
+From Kiln OS v1.0.1 it is in Kiln's plugin catalog: Settings > Plugins >
+Community on the touch screen. On older Kiln OS, clone it over SSH (Kiln's
 default password is `root`):
 
 ```sh
 cd /data/ad5x/plugins
-su klipper -s /bin/sh -c 'git clone https://github.com/DIEHARDave/FF_NFC.git ff_nfc'
+su klipper -s /bin/sh -c 'git clone https://github.com/DIEHARDave/lanetag-nfc.git ff_nfc'
 ```
 
 Then in the console (Fluidd, Mainsail or HelixScreen):

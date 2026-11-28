@@ -1,0 +1,65 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400" width="400" height="400">
+<title>LaneTag USB (lanetag-nfc)</title>
+<g transform="translate(36 0)"><g id="spool">
+<ellipse cx="230" cy="194" rx="112" ry="150" id="back-flange" fill="#243241" stroke="#1b2632" stroke-width="3"/>
+<path id="filament" d="M151.01 70.72L218.21 65.68A96.32 129 0 0 1 228.99 323.28L161.79 328.32A96.32 129 0 0 1 151.01 70.72Z" fill="#14a3a3" stroke="#1b2632" stroke-width="3" stroke-linejoin="round"/>
+<g id="filament-coils" fill="none" stroke="#0b7676" stroke-width="2.5" stroke-linecap="round">
+<path d="M167.08 69.52A96.32 129 0 0 1 177.86 327.11"/>
+<path d="M177.31 68.75A96.32 129 0 0 1 188.08 326.35"/>
+<path d="M187.54 67.98A96.32 129 0 0 1 198.31 325.58"/>
+<path d="M197.76 67.22A96.32 129 0 0 1 208.53 324.81"/>
+<path d="M207.99 66.45A96.32 129 0 0 1 218.76 324.05"/>
+</g>
+<ellipse cx="150" cy="200" rx="112" ry="150" id="front-rim" fill="#53697f" stroke="#1b2632" stroke-width="3" transform="translate(11 -1)"/>
+<ellipse cx="150" cy="200" rx="112" ry="150" id="front-face" fill="#3a4e63" stroke="#1b2632" stroke-width="3"/>
+<g id="windows">
+<clipPath id="mk-win0"><path d="M180.1 94.97A84 112.5 0 0 0 119.9 94.97L133.95 143.99A44.8 60 0 0 1 166.05 143.99Z"/></clipPath>
+<path d="M180.1 94.97A84 112.5 0 0 0 119.9 94.97L133.95 143.99A44.8 60 0 0 1 166.05 143.99Z" fill="#243241" stroke="#243241" stroke-width="6" stroke-linejoin="round"/>
+<g clip-path="url(#mk-win0)">
+<path d="M180.1 94.97A84 112.5 0 0 0 119.9 94.97L133.95 143.99A44.8 60 0 0 1 166.05 143.99Z" fill="#14a3a3" transform="translate(7 -0.5)"/>
+<path d="M129 134.55A56 75 0 0 1 185 134.55" fill="none" stroke="#0b7676" stroke-width="2.5"/>
+<path d="M122.28 118.96A69.44 93 0 0 1 191.72 118.96" fill="none" stroke="#0b7676" stroke-width="2.5"/>
+</g>
+<path d="M180.1 94.97A84 112.5 0 0 0 119.9 94.97L133.95 143.99A44.8 60 0 0 1 166.05 143.99Z" fill="none" stroke="#1b2632" stroke-width="2.5" stroke-linejoin="round"/>
+<clipPath id="mk-win1"><path d="M228.42 240.32A84 112.5 0 0 0 228.42 159.68L191.82 178.5A44.8 60 0 0 1 191.82 221.5Z"/></clipPath>
+<path d="M228.42 240.32A84 112.5 0 0 0 228.42 159.68L191.82 178.5A44.8 60 0 0 1 191.82 221.5Z" fill="#243241" stroke="#243241" stroke-width="6" stroke-linejoin="round"/>
+<g clip-path="url(#mk-win1)">
+<path d="M228.42 240.32A84 112.5 0 0 0 228.42 159.68L191.82 178.5A44.8 60 0 0 1 191.82 221.5Z" fill="#14a3a3" transform="translate(7 -0.5)"/>
+<path d="M205.5 162A56 75 0 0 1 205.5 237" fill="none" stroke="#0b7676" stroke-width="2.5"/>
+<path d="M217.14 153A69.44 93 0 0 1 217.14 246" fill="none" stroke="#0b7676" stroke-width="2.5"/>
+</g>
+<path d="M228.42 240.32A84 112.5 0 0 0 228.42 159.68L191.82 178.5A44.8 60 0 0 1 191.82 221.5Z" fill="none" stroke="#1b2632" stroke-width="2.5" stroke-linejoin="round"/>
+<clipPath id="mk-win2"><path d="M119.9 305.03A84 112.5 0 0 0 180.1 305.03L166.05 256.01A44.8 60 0 0 1 133.95 256.01Z"/></clipPath>
+<path d="M119.9 305.03A84 112.5 0 0 0 180.1 305.03L166.05 256.01A44.8 60 0 0 1 133.95 256.01Z" fill="#243241" stroke="#243241" stroke-width="6" stroke-linejoin="round"/>
+<g clip-path="url(#mk-win2)">
+<path d="M119.9 305.03A84 112.5 0 0 0 180.1 305.03L166.05 256.01A44.8 60 0 0 1 133.95 256.01Z" fill="#14a3a3" transform="translate(7 -0.5)"/>
+<path d="M185 264.45A56 75 0 0 1 129 264.45" fill="none" stroke="#0b7676" stroke-width="2.5"/>
+<path d="M191.72 280.04A69.44 93 0 0 1 122.28 280.04" fill="none" stroke="#0b7676" stroke-width="2.5"/>
+</g>
+<path d="M119.9 305.03A84 112.5 0 0 0 180.1 305.03L166.05 256.01A44.8 60 0 0 1 133.95 256.01Z" fill="none" stroke="#1b2632" stroke-width="2.5" stroke-linejoin="round"/>
+<clipPath id="mk-win3"><path d="M71.58 159.68A84 112.5 0 0 0 71.58 240.32L108.18 221.5A44.8 60 0 0 1 108.18 178.5Z"/></clipPath>
+<path d="M71.58 159.68A84 112.5 0 0 0 71.58 240.32L108.18 221.5A44.8 60 0 0 1 108.18 178.5Z" fill="#243241" stroke="#243241" stroke-width="6" stroke-linejoin="round"/>
+<g clip-path="url(#mk-win3)">
+<path d="M71.58 159.68A84 112.5 0 0 0 71.58 240.32L108.18 221.5A44.8 60 0 0 1 108.18 178.5Z" fill="#14a3a3" transform="translate(7 -0.5)"/>
+<path d="M108.5 237A56 75 0 0 1 108.5 162" fill="none" stroke="#0b7676" stroke-width="2.5"/>
+<path d="M96.86 246A69.44 93 0 0 1 96.86 153" fill="none" stroke="#0b7676" stroke-width="2.5"/>
+</g>
+<path d="M71.58 159.68A84 112.5 0 0 0 71.58 240.32L108.18 221.5A44.8 60 0 0 1 108.18 178.5Z" fill="none" stroke="#1b2632" stroke-width="2.5" stroke-linejoin="round"/>
+</g>
+<clipPath id="mk-bore"><ellipse cx="150" cy="200" rx="22.4" ry="30" /></clipPath>
+<g id="bore">
+<ellipse cx="150" cy="200" rx="22.4" ry="30" fill="#53697f"/>
+<g clip-path="url(#mk-bore)"><ellipse cx="162" cy="199" rx="22.4" ry="30" fill="#141c25"/></g>
+<ellipse cx="150" cy="200" rx="22.4" ry="30" fill="none" stroke="#1b2632" stroke-width="3"/>
+</g>
+<g id="nfc-sticker">
+<ellipse cx="102.48" cy="136.36" rx="21.28" ry="28.5" fill="#ffffff" stroke="#1b2632" stroke-width="2.5"/>
+<g id="tag-waves" transform="translate(102.48 136.36) scale(17.02 22.8)" fill="none" stroke="#1e88e5" stroke-width="0.13" stroke-linecap="round">
+<circle r="0.13" fill="#1e88e5" stroke="none"/>
+<path d="M-0.25 -0.28A0.38 0.38 0 0 0 -0.25 0.28M0.25 -0.28A0.38 0.38 0 0 1 0.25 0.28"/>
+<path d="M-0.44 -0.49A0.66 0.66 0 0 0 -0.44 0.49M0.44 -0.49A0.66 0.66 0 0 1 0.44 0.49"/>
+<path d="M-0.63 -0.7A0.94 0.94 0 0 0 -0.63 0.7M0.63 -0.7A0.94 0.94 0 0 1 0.63 0.7"/>
+</g>
+</g>
+</g></g>
+</svg>

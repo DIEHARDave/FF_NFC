@@ -3,7 +3,7 @@
   "description": "NFC/RFID filament tags: scan a spool, pick the IFS slot, and its material, color and Spoolman spool are set",
   "version": "0.5.0",
   "author": "DIEHARDave",
-  "url": "https://github.com/DIEHARDave/FF_NFC",
+  "url": "https://github.com/DIEHARDave/lanetag-nfc",
   "requires_os": "1.6",
   "requires": [],
   "conflicts": ["nfc"]
