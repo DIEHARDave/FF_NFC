@@ -274,6 +274,8 @@ class Iso14443Session(CardSession):
 
 
 class Rc522Reader(Reader):
+    chip_type = "rc522"
+
     def __init__(self, transport, keysets_for_uid=None):
         Reader.__init__(self, keysets_for_uid)
         self.transport = transport

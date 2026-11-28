@@ -251,6 +251,8 @@ def inventory_iso15693(chip):
 
 
 class Pn5180Reader(Reader):
+    chip_type = "pn5180"
+
     def __init__(self, transport, keysets_for_uid=None):
         Reader.__init__(self, keysets_for_uid)
         self.transport = transport

@@ -157,6 +157,8 @@ class Pn532Session(CardSession):
 
 
 class Pn532Reader(Reader):
+    chip_type = "pn532"
+
     def __init__(self, path, baud=115200, keysets_for_uid=None):
         Reader.__init__(self, keysets_for_uid)
         self.path = path

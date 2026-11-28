@@ -125,6 +125,11 @@ class FakePrinter(object):
     def register_event_handler(self, event, fn):
         self.handlers[event] = fn
 
+    def add_object(self, name, obj):
+        if name in self.objects:
+            raise ConfigError("Printer object '%s' already created" % name)
+        self.objects[name] = obj
+
 
 class FakeWebhooks(object):
     def __init__(self):

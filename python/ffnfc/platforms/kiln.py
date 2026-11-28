@@ -4,10 +4,13 @@ temperature). When Kiln's spoolman plugin is on, SPOOLMAN_SET_SLOT records
 the slot's Spoolman spool, so it becomes the active spool whenever that
 slot loads.
 
-Kiln's kiln_lanes Moonraker component mirrors the slots into lane_data;
-after an assignment the slot's record is written once more
-(lane_data.KilnLaneData) so HelixScreen takes the scanned spool over a
-color picked on its screen.
+Kiln's kiln_lanes Moonraker component mirrors the slots into lane_data.
+From Kiln plugin API 1.12 (Kiln OS v1.0.1, kiln-os issue #101)
+IFS_SET_MATERIAL also keeps the slot's spool (SPOOL_ID= VENDOR= NAME=
+FILAMENT_ID= BED_TEMP=) and kiln_lanes writes it into lane_data, so FF_NFC
+sends everything there and kiln_lanes stays the only writer. On older Kiln
+only type, color and temperature reach the slot; with lane_data: always
+the record is written once more after Kiln's (lane_data.KilnLaneData).
 
 With KILN_AFC (the full AFC on the IFS), a Spoolman spool goes to the
 slot's AFC lane with SET_SPOOL_ID instead: AFC then keeps the lane's spool,
@@ -49,6 +52,85 @@ QR_WIDTH = 640
 AFC_CHECK_DELAY = 5.0
 # The [ff_nfc] options only this platform reads.
 OPTIONS = ("set_temperature",)
+# Kiln plugin API that takes the slot's spool details on IFS_SET_MATERIAL
+# (printer.ad5x_plugins.api_version; kiln-os issue #101).
+SPOOL_DETAILS_API = (1, 12)
+# Kiln refuses the whole IFS_SET_MATERIAL when VENDOR=, NAME= or
+# FILAMENT_ID= holds one of these (ifs.py SPOOL_TEXT_BAD), or more than 64
+# printable characters, and then keeps nothing, not even type and color.
+SLOT_TEXT_BAD = frozenset('"\'\\;%')
+SLOT_TEXT_MAX = 64
+# [heater_bed] max_temp in Kiln's ad5x.cfg; BED_TEMP= above it is refused.
+BED_TEMP_MAX = 130
+
+
+def api_version(value):
+    """(major, minor) from Kiln's "1.12", (0, 0) when missing or unreadable."""
+    try:
+        major, minor = str(value).strip().split(".")[:2]
+        return int(major), int(minor)
+    except (TypeError, ValueError):
+        return 0, 0
+
+
+def slot_text(value):
+    """VENDOR=/NAME= text Kiln keeps: refused characters dropped, other
+    unprintable ones and runs of spaces made one space, at most
+    SLOT_TEXT_MAX characters; "" for nothing."""
+    text = "".join(" " if not c.isprintable() else c
+                   for c in str(value or "") if c not in SLOT_TEXT_BAD)
+    return " ".join(text.split())[:SLOT_TEXT_MAX].strip()
+
+
+def slot_filament_id(value):
+    """FILAMENT_ID= text: OrcaSlicer's id exactly as given, or "" when it
+    is not one Kiln can keep unchanged (Kiln then writes its own PKLN* id)."""
+    text = str(value or "").strip()
+    if (not text or len(text) > SLOT_TEXT_MAX or not text.isprintable()
+            or " " in text or SLOT_TEXT_BAD.intersection(text)):
+        return ""
+    return text
+
+
+def slot_bed_temp(value):
+    """BED_TEMP= degrees 1..BED_TEMP_MAX, "" (clear) otherwise."""
+    try:
+        deg = int(round(float(value)))
+    except (TypeError, ValueError):
+        return ""
+    return "%d" % deg if 0 < deg <= BED_TEMP_MAX else ""
+
+
+def spool_name(scan):
+    """NAME=: the filament's own name without the vendor, which goes in
+    VENDOR= (Spoolman's filament name, else the tag's material, modifiers
+    and name)."""
+    if scan.spool is not None:
+        name = (scan.spool.get("filament") or {}).get("name")
+        if name:
+            return name
+    tag = scan.filament
+    if tag is None:
+        return scan.title()
+    title = " ".join(str(w) for w in [tag.material] + list(tag.modifiers) if w)
+    if tag.name and tag.name.lower() not in title.lower():
+        title = (title + " " + tag.name).strip()
+    return title or scan.title()
+
+
+def spool_params(info):
+    """The spool's details for IFS_SET_MATERIAL (plugin API 1.12). All
+    five are sent, empty ones clear the slot's old value: a scan is a new
+    spool. Text values are double-quoted (spaces and "#" need it)."""
+    spool_id = info.get("spool_id")
+    params = [" SPOOL_ID=%s" % ("%d" % spool_id if isinstance(spool_id, int)
+                                and not isinstance(spool_id, bool) and spool_id > 0 else "")]
+    for key, text in (("VENDOR", slot_text(info.get("vendor"))),
+                      ("NAME", slot_text(info.get("name"))),
+                      ("FILAMENT_ID", slot_filament_id(info.get("filament_id")))):
+        params.append(' %s="%s"' % (key, text) if text else " %s=" % key)
+    params.append(" BED_TEMP=%s" % slot_bed_temp(info.get("bed_temp")))
+    return "".join(params)
 
 
 def kiln_material(material):
@@ -113,6 +195,7 @@ class KilnPlatform(object):
         self.ifs = None
         self.ifs_materials = None
         self.spoolman_slots = None   # Kiln's spoolman plugin
+        self.plugins = None          # Kiln's ad5x_plugins (api_version)
         self._checks = []            # (slot, spool ID, label) given to AFC
         self._check_timer = None
 
@@ -129,6 +212,18 @@ class KilnPlatform(object):
         self.ifs = self.printer.lookup_object("ifs", None)
         self.ifs_materials = self.printer.lookup_object("ifs_materials", None)
         self.spoolman_slots = self.printer.lookup_object("spoolman_slots", None)
+        self.plugins = self.printer.lookup_object("ad5x_plugins", None)
+
+    def spool_details(self):
+        """True when IFS_SET_MATERIAL takes the slot's spool details (Kiln
+        plugin API 1.12 or newer). Older Kiln refuses them."""
+        if self.plugins is None:
+            return False
+        try:
+            status = self.plugins.get_status(self.core.reactor.monotonic())
+        except Exception:
+            return False
+        return api_version(status.get("api_version")) >= SPOOL_DETAILS_API
 
     def slots(self):
         """{"toolchanger", "current", "presence",
@@ -170,7 +265,10 @@ class KilnPlatform(object):
         if not isinstance(units, dict):
             return None, None
         for unit in units.values():
-            find = getattr(unit, "_lane_for_slot", None)
+            # lane_for_slot: the shared AFC_IFS unit (afc-kiln v0.3.0);
+            # _lane_for_slot: older KILN_AFC.
+            find = (getattr(unit, "lane_for_slot", None)
+                    or getattr(unit, "_lane_for_slot", None))
             if find is None:
                 continue
             lane = find(slot_number)
@@ -180,6 +278,17 @@ class KilnPlatform(object):
 
     def afc_lane(self, slot_number):
         return self.afc_unit_lane(slot_number)[1]
+
+    def lane_slot(self, lane):
+        """The IFS slot of an AFC lane name (afc-kiln), or None: without AFC
+        Kiln's kiln_lanes names slot n lane<n>, which the core maps."""
+        if self.printer.lookup_object("AFC", None) is None:
+            return None
+        for n in self.slots()["slots"]:
+            found = self.afc_lane(n)
+            if found is not None and getattr(found, "name", None) == lane:
+                return n
+        return None
 
     def _check_later(self, slot_number, spool_id, label):
         """AFC fetches a spool from Spoolman after SET_SPOOL_ID returns and
@@ -236,8 +345,13 @@ class KilnPlatform(object):
                 core._in_background(core.spoolman.bind_uid, spool, scan.uid, scan.tag_format)
             respond("NFC: %s (%s) is now %s (Spoolman spool %d)"
                     % (label, lane, scan.title(), spool["id"]))
-            syncs = (getattr(afc_unit, "sync_spools", False) is True
-                     and getattr(afc_unit, "spool_slots", None) is not None)
+            # spool_slots: on the unit's Kiln backend since afc-kiln's shared
+            # AFC_IFS unit (v0.3.0), on the unit itself before.
+            backend = getattr(afc_unit, "backend", None)
+            spool_slots = getattr(afc_unit, "spool_slots", None)
+            if spool_slots is None:
+                spool_slots = getattr(backend, "spool_slots", None)
+            syncs = getattr(afc_unit, "sync_spools", False) is True and spool_slots is not None
             if self.spoolman_slots is not None and not syncs:
                 # KILN_AFC before its sync_spools, or with it off: both set
                 # the active spool, from lists that drift apart.
@@ -256,7 +370,12 @@ class KilnPlatform(object):
                     % (scan.material(), label, current["material"] or "its material"))
         color = normalize_color(scan.color())
         temp = scan.nozzle_temp() if self.set_temp else None
-        if self.ifs_materials is not None and (material or color or temp):
+        # Without AFC, Kiln 1.12+ keeps the spool's details with the slot and
+        # kiln_lanes writes them into lane_data (kiln-os #101). With AFC,
+        # AFC_IFS copies the slot into the lane and AFC keeps the spool.
+        details = (lane is None and self.spool_details()
+                   and (spool is not None or scan.filament is not None))
+        if self.ifs_materials is not None and (material or color or temp or details):
             cmd = "IFS_SET_MATERIAL SLOT=%d" % slot_number
             if material:
                 cmd += " TYPE=%s" % material
@@ -264,14 +383,16 @@ class KilnPlatform(object):
                 cmd += " COLOR=%s" % color
             if temp:
                 cmd += " TEMP=%d" % temp
+            info = core._lane_info(scan, material or current["material"],
+                                   color or current["color"])
+            if temp:
+                info["nozzle_temp"] = temp
+            if details:
+                cmd += spool_params(dict(info, name=spool_name(scan)))
             run_gcode(cmd)
             if lane is None:
                 # With AFC, AFC_IFS copies the slot into the lane and AFC
                 # writes lane_data.
-                info = core._lane_info(scan, material or current["material"],
-                                       color or current["color"])
-                if temp:
-                    info["nozzle_temp"] = temp
                 core._write_lane_data(slot_number, info)
         if spool is None:
             what = (material or current["material"] or "?") + (" #" + color if color else "")
@@ -299,7 +420,14 @@ class KilnPlatform(object):
 
     def status_lines(self):
         from ..klipper_plugin import PLUGIN_DIR
-        return hook_problems(PLUGIN_DIR)
+        lines = hook_problems(PLUGIN_DIR)
+        if (self.ifs_materials is not None and self.plugins is not None
+                and self.printer.lookup_object("AFC", None) is None
+                and not self.spool_details()):
+            lines.append("this Kiln OS keeps only type, color and temperature per slot;"
+                         " the spool's Spoolman ID, vendor and name reach lane_data from"
+                         " Kiln OS v1.0.1 (plugin API 1.12)")
+        return lines
 
     def qr_args(self):
         return []

@@ -317,7 +317,10 @@ def classify_atr(atr):
     return None, None
 
 
+# A PC/SC reader (ACR122U, ...): its chip is behind the CCID interface.
 class CcidReader(Reader):
+    chip_type = "ccid"
+
     def __init__(self, device, keysets_for_uid=None):
         Reader.__init__(self, keysets_for_uid)
         self.device = device

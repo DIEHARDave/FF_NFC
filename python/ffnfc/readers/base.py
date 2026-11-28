@@ -99,6 +99,8 @@ class Reader(object):
     reader stops working."""
 
     name = "reader"
+    # The chip, for lane_tags (lane-status-spec section 2.4): pn532, rc522, ...
+    chip_type = None
 
     def __init__(self, keysets_for_uid=None):
         # Callable(uid) -> [KeySet], from the decoders that read MIFARE Classic.

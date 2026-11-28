@@ -23,6 +23,7 @@ details (lane_data.py), for OrcaSlicer and HelixScreen."""
 import json
 import logging
 import os
+import re
 import subprocess
 import sys
 import threading
@@ -32,6 +33,7 @@ from . import decoders
 from .beeper import Beeper
 from .decoders.crypto import key_matches
 from .decoders import vendors
+from .lane_tags import OBJECT_NAME as LANE_TAGS_OBJECT, LaneTags, reader_details
 from .readers.base import ReaderError
 from .readers.detect import READER_TYPES, open_reader
 from .spoolman import (Spoolman, SpoolmanError, normalize_uid, orca_filament_id, spool_color,
@@ -197,6 +199,7 @@ class FfNfc(object):
         self.reader_name = ""
         self.reader_state = "starting"
         self.reader_error = ""
+        self.reader_details = {}     # {"type", "port"} of the open reader
         self.last = None             # last Scan
         self.pending = None          # Scan waiting for a slot
         self.prompt_open = False
@@ -211,7 +214,8 @@ class FfNfc(object):
 
         for cmd, desc in (
                 ("NFC_STATUS", "Show the NFC reader state and the last scanned tag"),
-                ("NFC_ASSIGN", "Assign the scanned spool to a slot: NFC_ASSIGN SLOT=<n>"),
+                ("NFC_ASSIGN", "Assign the scanned spool to a slot: NFC_ASSIGN SLOT=<n>"
+                               " or LANE=<lane>"),
                 ("NFC_CANCEL", "Dismiss the NFC slot prompt"),
                 ("NFC_PROMPT", "Show the slot prompt for the last scanned tag again"),
                 ("NFC_CREATE_SPOOL", "Add the scanned tag's filament to Spoolman"),
@@ -224,6 +228,9 @@ class FfNfc(object):
                 ("NFC_ENABLE", "Resume handling scanned tags"),
                 ("NFC_DISABLE", "Ignore scanned tags until NFC_ENABLE")):
             self.gcode.register_command(cmd, getattr(self, "cmd_" + cmd), desc=desc)
+        # lane-status-spec section 2.4: registered with the config, before
+        # klippy:ready, as UIs read the object list once.
+        self.printer.add_object(LANE_TAGS_OBJECT, LaneTags(self))
         for name in REMOTE_ENDPOINTS:
             self.webhooks.register_endpoint("ff_nfc/" + name, self._endpoint(name))
         self.printer.register_event_handler("klippy:connect", self._handle_connect)
@@ -320,7 +327,8 @@ class FfNfc(object):
                     self._stop.wait(self.retry_interval)
                     continue
                 last_error = None
-                self._post(self._reader_changed, "connected", reader.describe(), "")
+                self._post(self._reader_changed, "connected", reader.describe(), "",
+                           reader_details(reader))
             try:
                 if self._rescan.is_set():
                     self._rescan.clear()
@@ -401,10 +409,12 @@ class FfNfc(object):
 
     # Reactor side ---------------------------------------------------------
 
-    def _reader_changed(self, state, name, error):
+    def _reader_changed(self, state, name, error, details=None):
         previous = self.reader_state
         self.reader_state = state
         self.reader_name = name or self.reader_name
+        if details is not None:
+            self.reader_details = details
         self.reader_error = error
         if state == "connected":
             self.gcode.respond_info("NFC: %s connected" % name)
@@ -478,6 +488,22 @@ class FfNfc(object):
         """{"toolchanger", "current", "presence",
         "slots": {n: {"material", "color", "loaded"}}, ...} from the platform."""
         return self.platform.slots()
+
+    def _lane_slot(self, lane):
+        """The slot a producer's lane name stands for, or None. The platform
+        knows its producer's names first (AFC lanes on Kiln); otherwise
+        lane<n> is slot n, and T<n> or E<n> (Creator 5, zmod_afclite) slot
+        n + 1."""
+        lane = str(lane or "").strip()
+        find = getattr(self.platform, "lane_slot", None)
+        slot = find(lane) if find is not None else None
+        if slot is None:
+            match = re.match(r"^(?:lane(\d+)|[TtEe](\d+))$", lane)
+            if match:
+                slot = int(match.group(1)) if match.group(1) else int(match.group(2)) + 1
+        if slot is None or slot not in self._slots()["slots"]:
+            return None
+        return slot
 
     def _slot_label(self, slots, n):
         return self.platform.slot_label(slots, n)
@@ -697,7 +723,15 @@ class FfNfc(object):
         scan = self.pending
         if scan is None:
             raise gcmd.error("NFC: no scanned tag is waiting for a slot; scan it again")
-        slot = gcmd.get_int("SLOT", minval=1)
+        lane = gcmd.get("LANE", None)
+        if lane is not None:
+            # lane_tags' assign (lane-status-spec section 2.4): the
+            # producer's lane name.
+            slot = self._lane_slot(lane)
+            if slot is None:
+                raise gcmd.error("NFC: there is no lane %r here" % lane)
+        else:
+            slot = gcmd.get_int("SLOT", minval=1)
         self._close_prompt()
         self._assign(scan, slot, gcmd.respond_info)
 

@@ -139,6 +139,11 @@ class FakePrinter(object):
     def register_event_handler(self, event, fn):
         self.handlers[event] = fn
 
+    def add_object(self, name, obj):
+        if name in self.objects:
+            raise ConfigError("Printer object '%s' already created" % name)
+        self.objects[name] = obj
+
 
 class FakeWebhooks(object):
     def __init__(self):
@@ -330,6 +335,98 @@ class PluginTest(unittest.TestCase):
                           info["spool_id"], info["vendor"]),
                          ("PLA", "112233", 215, 60, 5, "Sunlu"))
 
+    def _api(self, objects, version):
+        class Plugins(object):
+            def get_status(self, eventtime):
+                return {"api_version": version}
+        objects["ad5x_plugins"] = Plugins()
+
+    def _spool_scan(self, plugin, spool):
+        scan = plugin._process(type2_tag(text_record("PLA:112233")))
+        scan.spool = spool
+        plugin._handle_scan(scan)
+        return scan
+
+    def test_api_1_12_sends_the_spool_details(self):
+        plugin, gcode, objects = make_plugin({"lane_data": True})
+        self._api(objects, "1.12")
+        plugin.platform.ready()
+        written = []
+        plugin.lane_data.write_later = lambda slot, info: written.append(slot)
+        plugin.bind_card_uid = False
+        self._spool_scan(plugin, {
+            "id": 5, "extra": {}, "filament": {
+                "name": "PLA+ 2.0 Red", "material": "PLA", "color_hex": "112233",
+                "vendor": {"name": "Sunlu"}, "settings_extruder_temp": 215,
+                "settings_bed_temp": 60, "extra": {"orca_filament_id": '"OFDSrzZ8"'}}})
+        gcode.commands["NFC_ASSIGN"](FakeGcmd(gcode, SLOT=3))
+        cmd = gcode.in_command[0]
+        self.assertTrue(cmd.startswith(
+            "IFS_SET_MATERIAL SLOT=3 TYPE=PLA COLOR=112233 TEMP=215 SPOOL_ID=5"
+            ' VENDOR="Sunlu" NAME="PLA+ 2.0 Red"'), cmd)
+        self.assertTrue(cmd.endswith(' FILAMENT_ID="OFDSrzZ8" BED_TEMP=60'), cmd)
+        # kiln_lanes writes lane_data; FF_NFC doesn't.
+        self.assertEqual(written, [])
+
+    def test_api_1_12_strips_what_kiln_refuses(self):
+        plugin, gcode, objects = make_plugin()
+        self._api(objects, "1.13")
+        plugin.platform.ready()
+        plugin.bind_card_uid = False
+        self._spool_scan(plugin, {
+            "id": 7, "extra": {}, "filament": {
+                "name": "PLA-CF 15% \"Pro\"; O'Neil\\x", "material": "PLA",
+                "color_hex": "112233", "vendor": {"name": "Tab\tVendor #2"},
+                "settings_bed_temp": 150, "extra": {"orca_filament_id": '"GFL99"'}}})
+        gcode.commands["NFC_ASSIGN"](FakeGcmd(gcode, SLOT=2))
+        cmd = gcode.in_command[0]
+        params = cmd.split(" SPOOL_ID=")[1]
+        for bad in "'\\;%":
+            self.assertNotIn(bad, params)
+        self.assertEqual(params.count('"'), 4)          # VENDOR and NAME quoted
+        self.assertIn('VENDOR="Tab Vendor #2"', cmd)
+        self.assertIn(" FILAMENT_ID= ", cmd)             # Bambu code: Kiln's own id
+        self.assertTrue(cmd.endswith(" BED_TEMP="), cmd)  # over 130: cleared
+        name = cmd.split('NAME="')[1].split('"')[0]
+        self.assertLessEqual(len(name), 64)
+
+    def test_api_1_12_tag_without_a_spool_clears_the_old_one(self):
+        plugin, gcode, objects = make_plugin()
+        self._api(objects, "1.12")
+        plugin.platform.ready()
+        payload = (b'{"protocol":"openspool","type":"PETG","color_hex":"0022FF",'
+                   b'"brand":"Elegoo","min_temp":230,"max_temp":250,"bed_min_temp":70}')
+        from helpers import mime_record
+        plugin._handle_scan(plugin._process(type2_tag(mime_record("application/json", payload))))
+        gcode.commands["NFC_ASSIGN"](FakeGcmd(gcode, SLOT=4))
+        cmd = gcode.in_command[0]
+        self.assertIn(" SPOOL_ID= ", cmd)
+        self.assertIn('VENDOR="Elegoo"', cmd)
+        self.assertIn(" FILAMENT_ID= ", cmd)
+
+    def test_api_1_11_keeps_the_old_command(self):
+        plugin, gcode, objects = make_plugin()
+        self._api(objects, "1.11")
+        plugin.platform.ready()
+        plugin.bind_card_uid = False
+        self._spool_scan(plugin, {"id": 8, "extra": {},
+                                  "filament": {"material": "PETG", "color_hex": "445566"}})
+        gcode.commands["NFC_ASSIGN"](FakeGcmd(gcode, SLOT=1))
+        self.assertEqual(gcode.in_command, ["IFS_SET_MATERIAL SLOT=1 TYPE=PETG COLOR=445566"])
+
+    def test_api_version_parse(self):
+        self.assertEqual(kiln.api_version("1.12"), (1, 12))
+        self.assertGreater(kiln.api_version("1.12"), kiln.api_version("1.9"))
+        self.assertEqual(kiln.api_version(None), (0, 0))
+        self.assertEqual(kiln.api_version("x"), (0, 0))
+
+    def test_afc_on_api_1_12_keeps_the_old_command(self):
+        plugin, gcode, objects, _ = self._afc_plugin()
+        self._api(objects, "1.12")
+        plugin.platform.ready()
+        self._assign(plugin, gcode, 3)
+        self.assertEqual(gcode.in_command, ["IFS_SET_MATERIAL SLOT=3 TYPE=PLA COLOR=112233"])
+
     def _afc_plugin(self, lanes=None, spoolman_slots=False, lane_data=False):
         lanes = lanes or {}
 
@@ -401,6 +498,22 @@ class PluginTest(unittest.TestCase):
                                             "filament": {"material": "PLA"}})
             self.assertEqual(any("ENABLE=0" in line for line in gcode.info), warned,
                              (sync, slots))
+
+    def test_afc_shared_unit_keeps_spool_slots_on_its_backend(self):
+        # afc-kiln v0.3.0: lane_for_slot without the underscore, spool_slots
+        # on unit.backend.
+        plugin, gcode, objects, _ = self._afc_plugin(spoolman_slots=True)
+        unit = objects["AFC"].units["IFS"]
+        unit.lane_for_slot = unit._lane_for_slot
+        del type(unit)._lane_for_slot
+        unit.sync_spools = True
+
+        class Backend(object):
+            spool_slots = object()
+        unit.backend = Backend()
+        self._assign(plugin, gcode, 2, {"id": 5, "extra": {}, "filament": {"material": "PLA"}})
+        self.assertIn("SET_SPOOL_ID LANE=lane2 SPOOL_ID=5", gcode.in_command)
+        self.assertFalse(any("ENABLE=0" in line for line in gcode.info))
 
     def test_afc_tag_without_a_spool(self):
         plugin, gcode, _, written = self._afc_plugin({2: 7}, lane_data=True)

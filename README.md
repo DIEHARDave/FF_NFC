@@ -361,7 +361,7 @@ alone:
 | AFC (zmod_afc_full, afc-kiln) | AFC | `SET_SPOOL_ID` |
 | Zmod, no HelixScreen | Zmod's slot mirror | `SET_SPOOL_ID` (AFC panel) or `CHANGE_ZCOLOR` |
 | Zmod + HelixScreen + zmod_afcplus | zmod_afcplus | `SET_SPOOL_ID` (AFC panel) |
-| Kiln OS without AFC | Kiln's `kiln_lanes` | `IFS_SET_MATERIAL`, `SPOOLMAN_SET_SLOT` |
+| Kiln OS without AFC | Kiln's `kiln_lanes` | `IFS_SET_MATERIAL` (with the spool's details from Kiln OS v1.0.1), `SPOOLMAN_SET_SLOT` |
 | Zmod + HelixScreen without zmod_afcplus, FLSUN T1 | nobody: FF_NFC | |
 
 `NFC_STATUS` names the writer. Zmod stores only palette colors, so for a
@@ -379,12 +379,49 @@ is found by its `lane` field, so this works with
 the AD5X's `lane1`..`lane4` and the Creator 5's `T0`..`T3` keys alike.
 
 * **Zmod:** other keys in the entry, such as zmod_afcplus's, are kept.
-* **Kiln OS:** Kiln's own record for the slot uses a key that HelixScreen
+* **Kiln OS v1.0.1 and newer** (plugin API 1.12): FF_NFC sends the
+  spool's details with `IFS_SET_MATERIAL` (`SPOOL_ID=`, `VENDOR=`, `NAME=`,
+  `FILAMENT_ID=`, `BED_TEMP=`), Kiln keeps them with the slot and
+  `kiln_lanes` writes them into `lane_data`, so Kiln stays the only writer
+  ([kiln-os#101](https://github.com/djvalic/kiln-os/issues/101)). Every scan
+  sends all five; an empty one clears what the slot's previous spool left.
+  Kiln refuses the whole command when a vendor or name holds `"`, `'`,
+  `\`, `;` or `%`, so FF_NFC leaves those characters out (a tag's
+  `PLA-CF 15%` arrives as `PLA-CF 15`) and cuts the text at 64 characters.
+  `FILAMENT_ID=` is only sent when it is an OrcaSlicer id Kiln can keep
+  exactly; otherwise it goes empty and Kiln names its own `PKLN*` profile.
+* **Older Kiln OS:** only type, color and temperature reach the slot.
+  Kiln's own record for the slot uses a key that HelixScreen
   mistakes for one of its own, so HelixScreen would ignore the change and
   keep showing a color once picked on its screen. With `lane_data: always`,
   FF_NFC rewrites the record right after Kiln does, so HelixScreen shows
   the scanned spool.
-  With KILN_AFC, AFC writes the record and FF_NFC leaves it alone.
+* With KILN_AFC, AFC writes the record and FF_NFC leaves it alone.
+
+### Tag reader status for UIs (`lane_tags ff_nfc`)
+
+FF_NFC publishes the Klipper object `lane_tags ff_nfc`, the tag reader part
+of the [lane-status-spec](https://github.com/prestonbrown/lane-status-spec)
+(section 2.4) for a reader that isn't the lane module itself. A UI can show
+whether the reader answers and offer the lanes for a scanned tag:
+
+```json
+{"spec_version": "0.1", "version": "0.5.0",
+ "tags": {"readers": {"ff_nfc": {"type": "pn532", "alive": true, "lanes": [],
+                                 "port": "/dev/ttyUSB0"}},
+          "lanes": {},
+          "pending": {"uid": "04A1B2C3D4E5F6",
+                      "spool": {"tracker": "spoolman", "id": "12"}}},
+ "assign": "NFC_ASSIGN", "cancel": "NFC_CANCEL"}
+```
+
+* `type` is the reader chip: `pn532`, `rc522`, `pn5180`, or `ccid` for a
+  PC/SC reader such as the ACR122U; `null` until a reader was found.
+* FF_NFC's reader is one shared reader that tags are held up to, so it
+  serves no lane and `tags.lanes` stays empty.
+* `pending` is the scan waiting for a lane: its tag UID (`null` for a QR
+  label) and Spoolman spool (`null` without one), or `null`.
+* `assign` with `LANE=` settles it, `cancel` dismisses it.
 
 ## Network readers
 
@@ -557,7 +594,7 @@ the Spoolman lookup and the slot prompt.
 | Command | |
 |---------|--|
 | `NFC_STATUS` | Reader state, the last tag, enabled formats and keys, and on Kiln OS any problem with the USB root part. |
-| `NFC_ASSIGN SLOT=<n>` | Assign the scanned spool to a slot (the prompt's buttons run this). |
+| `NFC_ASSIGN SLOT=<n>` or `LANE=<lane>` | Assign the scanned spool to a slot (the prompt's buttons run this). `LANE=` takes the lane name the printer's lane module uses (`lane2`, `T1`, an AFC lane), as `lane_tags ff_nfc` asks. |
 | `NFC_CANCEL` | Close the prompt. |
 | `NFC_PROMPT` | Show the prompt for the last tag again. |
 | `NFC_CREATE_SPOOL` | Add the scanned filament to Spoolman. |
