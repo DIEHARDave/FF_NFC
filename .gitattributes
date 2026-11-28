@@ -5,3 +5,4 @@
 *.bin binary
 root/* text eol=lf
 klipper/* text eol=lf
+flsun/* text eol=lf

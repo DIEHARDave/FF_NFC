@@ -21,6 +21,8 @@ as one plugin:
   Creator 5** (four toolheads).
 * **[Kiln OS](https://github.com/djvalic/kiln-os)** on the **Flashforge
   AD5X**.
+* **FLSUN T1 / T1 Pro** (formerly FLSUN_NFC), through
+  [FLSUN_Updater](https://github.com/DIEHARDave/FLSUN_Updater).
 * **Any other Klipper printer with Moonraker** (Sovol, Voron, RatRig, ...):
   one toolhead, or the lanes of the
   [AFC-Klipper-Add-On](https://github.com/AFCProject/AFC-Klipper-Add-On).
@@ -200,6 +202,15 @@ then `ENABLE_PLUGIN NAME=ff_nfc ROOT=1`: `root/install.sh` removes the old
 To remove the plugin: `REMOVE_PLUGIN NAME=ff_nfc` (Kiln runs
 `root/uninstall.sh` first), or `DISABLE_PLUGIN NAME=ff_nfc` to keep the
 clone.
+
+### FLSUN T1 / T1 Pro
+
+Turn on `lanetag-nfc` in FLSUN_Updater's PLUGINS window (or set
+`lanetag-nfc: yes` in `flsun_plugins.cfg`). It was FLSUN_NFC: where FLSUN_NFC
+is on, FLSUN_Updater's next run swaps it for lanetag-nfc by itself. The
+Klipper section stays `[flsun_nfc]`, and your `flsun_nfc_user.cfg` keeps
+working. By hand, as the pi user: clone this repository to `~/lanetag-nfc`
+and run `~/lanetag-nfc/flsun/install.sh`.
 
 ### Other Klipper printers
 
