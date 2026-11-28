@@ -78,13 +78,13 @@ move from either, see [Moving from zmod_nfc or KILN_NFC](#moving-from-zmod_nfc-o
 | **ACR122U** | USB (CCID) | ISO 14443A | Tested. MIFARE Classic is read through its internal PN532. |
 | Other PC/SC readers: ACR1252U, ACR1255U, Identiv, ... | USB (CCID) | depends on the reader | Same driver: any reader with the PC/SC Part 3 storage-card commands. |
 | **PN532** | USB-serial adapter (CH340, CP210x, PL2303, FTDI) | ISO 14443A | Tested with an all-in-one USB-C "PN532 V2.0" board (CH340E, HSU wired in). On other boards, set **HSU/UART** mode (both switches off on the common red and blue boards). Cannot read ISO 15693 (OpenPrintTag). |
-| **[rfidnfc2usb_bridge](https://github.com/DIEHARDave/rfidnfc2usb_bridge)** | USB: an ESP32 or XIAO SAMD21/RP2350 board with a PN532 (I2C or UART), an RC522 or a PN5180 (both SPI), which FF_NFC sees as a PN532 | ISO 14443A | One small board for any of the three chips; no setting needed (`reader: auto` or `pn532`). Tested with a PN532 on an ESP32-C3 on an AD5X; RC522 and PN5180 untested on hardware. See [USB bridge for PN532, RC522 and PN5180](#usb-bridge-for-pn532-rc522-and-pn5180). |
-| **PN5180** | USB through [rfidnfc2usb_bridge](#usb-bridge-for-pn532-rc522-and-pn5180) | ISO 14443A (ISO 15693 not yet through the bridge) | The PN5180 has no USB of its own. Through the bridge it reads like a PN532; FF_NFC does not use the bridge's ISO 15693 commands yet, so OpenPrintTag needs an ACR1552U or LaneTag for now. |
-| **RC522** (MFRC522) | USB through [rfidnfc2usb_bridge](#usb-bridge-for-pn532-rc522-and-pn5180) | ISO 14443A | SPI only, so it needs the bridge. Power it from 3.3 V. Cannot read ISO 15693 (OpenPrintTag). |
+| **[LaneTag USB bridge](https://github.com/DIEHARDave/lanetag-usb-bridge)** | USB: an ESP32 or XIAO SAMD21/RP2350 board with a PN532 (I2C or UART), an RC522 or a PN5180 (both SPI), which FF_NFC sees as a PN532 | ISO 14443A | One small board for any of the three chips; no setting needed (`reader: auto` or `pn532`). Tested with a PN532 on an ESP32-C3 on an AD5X; RC522 and PN5180 untested on hardware. See [USB bridge for PN532, RC522 and PN5180](#usb-bridge-for-pn532-rc522-and-pn5180). |
+| **PN5180** | USB through [LaneTag USB bridge](#usb-bridge-for-pn532-rc522-and-pn5180) | ISO 14443A (ISO 15693 not yet through the bridge) | The PN5180 has no USB of its own. Through the bridge it reads like a PN532; FF_NFC does not use the bridge's ISO 15693 commands yet, so OpenPrintTag needs an ACR1552U or LaneTag for now. |
+| **RC522** (MFRC522) | USB through [LaneTag USB bridge](#usb-bridge-for-pn532-rc522-and-pn5180) | ISO 14443A | SPI only, so it needs the bridge. Power it from 3.3 V. Cannot read ISO 15693 (OpenPrintTag). |
 | **[LaneTag](https://github.com/DIEHARDave/LaneTag)** | Wi-Fi: an ESP32 with a PN532 (I2C or HSU), an RC522 (SPI) or a PN5180 (SPI) | ISO 14443A; also ISO 15693 with a PN5180 | A reader anywhere on the network, for one or several printers. No bridge needed: the ESP32 drives the RC522 and PN5180 itself. See [Network readers](#network-readers). |
 
 `reader: auto` (the default) uses the first CCID reader it finds, then probes
-USB-serial adapters for a PN532 (an rfidnfc2usb_bridge answers as one,
+USB-serial adapters for a PN532 (a LaneTag USB bridge answers as one,
 whatever chip it carries) or a PN5180/RC522 bridge. It never probes serial
 ports that a Klipper MCU uses, or ports from unknown USB vendors.
 
@@ -513,7 +513,7 @@ an API key). The protocol is in [docs/remote-api.md](docs/remote-api.md).
 
 ## USB bridge for PN532, RC522 and PN5180
 
-[rfidnfc2usb_bridge](https://github.com/DIEHARDave/rfidnfc2usb_bridge)
+[LaneTag USB bridge](https://github.com/DIEHARDave/lanetag-usb-bridge)
 is an RFID/NFC to USB bridge: firmware for an ESP32 or Seeed XIAO (SAMD21,
 RP2350) board that puts a PN532, an RC522 or a PN5180 on the printer's
 USB port. The printer sees **a PN532 on a USB serial port** whichever chip is
@@ -542,7 +542,7 @@ hardware yet.
 
 (The thin SPI bridge protocol in [docs/pn5180-bridge.md](docs/pn5180-bridge.md),
 where FF_NFC's own PN5180 and RC522 drivers do the chip work, has no
-firmware. The rfidnfc2usb_bridge covers the same chips.)
+firmware. The LaneTag USB bridge covers the same chips.)
 
 ## Spoolman QR labels
 
