@@ -14,13 +14,18 @@ is the ESP32 Wi-Fi reader, which also works with it but isn't needed.
 
 > **Parts:** the printers, boards, readers and other gear that go with this project are listed at [projects.die-hard.net/gear](https://projects.die-hard.net/gear) (Amazon affiliate links).
 
-NFC/RFID filament tags and **Spoolman QR labels** for Flashforge printers,
-as one plugin for two firmwares:
+NFC/RFID filament tags and **Spoolman QR labels** for Klipper printers,
+as one plugin:
 
 * **Zmod** on the **Flashforge AD5X** (four-slot IFS) and the **Flashforge
   Creator 5** (four toolheads).
 * **[Kiln OS](https://github.com/djvalic/kiln-os)** on the **Flashforge
   AD5X**.
+* **Any other Klipper printer with Moonraker** (Sovol, Voron, RatRig, ...):
+  one toolhead, or the lanes of the
+  [AFC-Klipper-Add-On](https://github.com/AFCProject/AFC-Klipper-Add-On).
+  See [Other Klipper printers](#other-klipper-printers). New; not yet run on
+  a Sovol.
 
 There are two ways to tell the printer which spool you are loading:
 
@@ -195,6 +200,44 @@ then `ENABLE_PLUGIN NAME=ff_nfc ROOT=1`: `root/install.sh` removes the old
 To remove the plugin: `REMOVE_PLUGIN NAME=ff_nfc` (Kiln runs
 `root/uninstall.sh` first), or `DISABLE_PLUGIN NAME=ff_nfc` to keep the
 clone.
+
+### Other Klipper printers
+
+For a printer running mainline Klipper and Moonraker, such as a Sovol, a
+Voron or a RatRig (KIAUH-style install: `~/klipper`, `~/printer_data`). As
+the user Klipper runs as, over SSH:
+
+```sh
+cd ~
+git clone https://github.com/DIEHARDave/lanetag-nfc.git
+~/lanetag-nfc/klipper/install.sh
+```
+
+The installer links the Klipper module, adds `[include ff_nfc.cfg]` to
+`printer.cfg` (above the `SAVE_CONFIG` block; a backup is kept as
+`printer.cfg.ff_nfc.bak`), installs a udev rule so Klipper can open the
+reader, adds the update entry to Fluidd/Mainsail's Software Updates, and
+restarts Moonraker and Klipper. Other paths: `PRINTER_DATA=...` and
+`KLIPPER_DIR=...` before the command. Then plug in a reader and run
+`NFC_STATUS`.
+
+* **One toolhead:** a scan needs no prompt. The tag's Spoolman spool
+  becomes the active spool, so Spoolman tracks its usage; a tag that isn't
+  in Spoolman clears the active spool (`clear_active_spool: False` keeps
+  it). `lane_data` slot 1 gets the spool for OrcaSlicer and HelixScreen.
+* **With AFC:** a scan asks which lane, or goes to the lane you insert the
+  filament into. A Spoolman spool goes to the lane with `SET_SPOOL_ID`, a
+  plain tag sets the lane's material and color.
+* **Readers:** USB PN532 boards (CH340, CP2102), RC522/PN5180 through the
+  [USB bridge](#usb-bridge-for-pn532-rc522-and-pn5180), and PC/SC readers
+  such as the ACR122U. The search never touches a Klipper MCU's port. If
+  `pcscd` runs on the printer, it takes the ACR122U first: the installer
+  says how to stop it. A new `dialout`/`plugdev` group membership needs a
+  reboot.
+* **Camera QR labels** use `http://127.0.0.1/webcam/?action=snapshot`
+  (crowsnest behind Mainsail or Fluidd); set `qr_snapshot_url` otherwise.
+
+`~/lanetag-nfc/klipper/uninstall.sh` removes it again.
 
 ## Moving from zmod_nfc or KILN_NFC
 

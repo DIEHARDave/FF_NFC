@@ -4,3 +4,4 @@
 *.cfg text eol=lf
 *.bin binary
 root/* text eol=lf
+klipper/* text eol=lf

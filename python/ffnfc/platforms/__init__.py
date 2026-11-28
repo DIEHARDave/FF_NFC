@@ -1,11 +1,13 @@
 """What differs between the firmwares FF_NFC runs on: how slots are read and
 set, lane_data, camera defaults and status checks. Each entry file names
-its platform (ff_nfc.py: zmod, extras/ff_nfc.py: kiln)."""
+its platform (ff_nfc.py: zmod, extras/ff_nfc.py: kiln, klipper/ff_nfc.py: any
+other Klipper printer)."""
 
-from . import kiln, zmod
+from . import kiln, klipper, zmod
 
-MODULES = {"zmod": zmod, "kiln": kiln}
-CLASSES = {"zmod": zmod.ZmodPlatform, "kiln": kiln.KilnPlatform}
+MODULES = {"zmod": zmod, "kiln": kiln, "klipper": klipper}
+CLASSES = {"zmod": zmod.ZmodPlatform, "kiln": kiln.KilnPlatform,
+           "klipper": klipper.KlipperPlatform}
 
 
 def make_platform(name, core, config):

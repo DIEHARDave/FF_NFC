@@ -1,0 +1,9 @@
+# lanetag-nfc: lets Klipper (its user in group plugdev) open NFC readers
+# through usbfs: ACS CCID readers (ACR122U, ACR1552U, ...), and the USB
+# serial chips lanetag-nfc drives itself on kernels without their driver
+# (CP210x, PL2303, FTDI). With a kernel driver they are ttys (group
+# dialout), which this rule doesn't change.
+SUBSYSTEM=="usb", ENV{DEVTYPE}=="usb_device", ATTR{idVendor}=="072f", GROUP="plugdev", MODE="0664"
+SUBSYSTEM=="usb", ENV{DEVTYPE}=="usb_device", ATTR{idVendor}=="10c4", GROUP="plugdev", MODE="0664"
+SUBSYSTEM=="usb", ENV{DEVTYPE}=="usb_device", ATTR{idVendor}=="067b", GROUP="plugdev", MODE="0664"
+SUBSYSTEM=="usb", ENV{DEVTYPE}=="usb_device", ATTR{idVendor}=="0403", GROUP="plugdev", MODE="0664"
