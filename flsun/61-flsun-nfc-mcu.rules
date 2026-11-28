@@ -1,0 +1,7 @@
+# lanetag-nfc (FLSUN T1): keeps /dev/serial/by-id/usb-1a86_USB_Serial-if00-port0 on the
+# T1's mainboard. The mainboard's USB serial chip is a CH340 without a
+# serial number, so a CH340 reader (a PN532 board) gets the same by-id name,
+# and udev would point it at whichever was plugged in last; Klipper and
+# FLSUN_klipper's flash tools would then open the reader. The mainboard
+# sits on the internal USB port below; its link wins.
+SUBSYSTEM=="tty", ENV{ID_PATH}=="platform-xhci-hcd.0.auto-usb-0:1:1.0", OPTIONS+="link_priority=100"

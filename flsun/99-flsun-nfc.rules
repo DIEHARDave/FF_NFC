@@ -1,0 +1,8 @@
+# lanetag-nfc (FLSUN T1): lets Klipper (user pi, group plugdev) open NFC readers through
+# usbfs: ACS CCID readers (ACR122U, ACR1552U, ...) and the USB serial chips
+# the T1's kernel has no driver for (CP210x, PL2303, FTDI), which lanetag-nfc
+# drives itself. CH340 and ESP32/RP2040 boards are ttys (group dialout).
+SUBSYSTEM=="usb", ENV{DEVTYPE}=="usb_device", ATTR{idVendor}=="072f", GROUP="plugdev", MODE="0664"
+SUBSYSTEM=="usb", ENV{DEVTYPE}=="usb_device", ATTR{idVendor}=="10c4", GROUP="plugdev", MODE="0664"
+SUBSYSTEM=="usb", ENV{DEVTYPE}=="usb_device", ATTR{idVendor}=="067b", GROUP="plugdev", MODE="0664"
+SUBSYSTEM=="usb", ENV{DEVTYPE}=="usb_device", ATTR{idVendor}=="0403", GROUP="plugdev", MODE="0664"

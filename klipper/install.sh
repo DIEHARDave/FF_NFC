@@ -68,12 +68,12 @@ if systemctl is-active --quiet pcscd.socket pcscd.service 2> /dev/null; then
 fi
 
 msg "Adding the Moonraker update manager entry"
-if [ ! -f "${CONFIG_DIR}/ff_nfc.conf" ]; then
-    sed "s#@REPO_DIR@#${REPO_DIR}#" "${REPO_DIR}/klipper/ff_nfc.conf" > "${CONFIG_DIR}/ff_nfc.conf"
+if [ ! -f "${CONFIG_DIR}/lanetag-nfc.conf" ]; then
+    sed "s#@REPO_DIR@#${REPO_DIR}#" "${REPO_DIR}/klipper/lanetag-nfc.conf" > "${CONFIG_DIR}/lanetag-nfc.conf"
 fi
-if ! grep -q '^\[include ff_nfc\.conf\]' "$MOONRAKER_CONF"; then
+if ! grep -q '^\[include lanetag-nfc\.conf\]' "$MOONRAKER_CONF"; then
     cp "$MOONRAKER_CONF" "${MOONRAKER_CONF}.ff_nfc.bak"
-    printf '\n[include ff_nfc.conf]\n' >> "$MOONRAKER_CONF"
+    printf '\n[include lanetag-nfc.conf]\n' >> "$MOONRAKER_CONF"
 fi
 
 msg "Restarting Moonraker and Klipper"

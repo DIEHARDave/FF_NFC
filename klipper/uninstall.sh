@@ -24,11 +24,11 @@ fi
 [ -L "${CONFIG_DIR}/ff_nfc.cfg" ] && rm -f "${CONFIG_DIR}/ff_nfc.cfg"
 
 msg "Removing the Moonraker update manager entry"
-if [ -f "$MOONRAKER_CONF" ] && grep -qx '\[include ff_nfc\.conf\]' "$MOONRAKER_CONF"; then
+if [ -f "$MOONRAKER_CONF" ] && grep -qx '\[include lanetag-nfc\.conf\]' "$MOONRAKER_CONF"; then
     cp "$MOONRAKER_CONF" "${MOONRAKER_CONF}.ff_nfc-uninstall.bak"
-    grep -vx '\[include ff_nfc\.conf\]' "${MOONRAKER_CONF}.ff_nfc-uninstall.bak" > "$MOONRAKER_CONF"
+    grep -vx '\[include lanetag-nfc\.conf\]' "${MOONRAKER_CONF}.ff_nfc-uninstall.bak" > "$MOONRAKER_CONF"
 fi
-rm -f "${CONFIG_DIR}/ff_nfc.conf"
+rm -f "${CONFIG_DIR}/lanetag-nfc.conf"
 
 msg "Removing the udev rule"
 sudo rm -f /etc/udev/rules.d/99-lanetag-nfc.rules
